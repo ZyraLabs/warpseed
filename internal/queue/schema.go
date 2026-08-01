@@ -63,4 +63,19 @@ var migrations = []string{
 		value TEXT NOT NULL
 	);
 	`,
+
+	// 002 — site editor fields (initial remote path, per-site transfer cap)
+	// and transfer/bandwidth/theme setting defaults (feedback batch 2026-08-02)
+	`
+	ALTER TABLE sites ADD COLUMN remote_path TEXT NOT NULL DEFAULT '';
+	ALTER TABLE sites ADD COLUMN max_transfers INTEGER NOT NULL DEFAULT 0;
+	INSERT OR IGNORE INTO settings(key,value) VALUES
+		('transfers.global_max','6'),
+		('transfers.site_max','3'),
+		('bw.mode','off'),
+		('bw.limit_bytes','0'),
+		('bw.percent','80'),
+		('bw.observed_max','0'),
+		('ui.theme','dark');
+	`,
 }

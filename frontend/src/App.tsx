@@ -4,7 +4,10 @@ import FilePane from "./components/FilePane";
 import HostKeyDialog from "./components/HostKeyDialog";
 import QueueDock from "./components/QueueDock";
 import QuickConnect from "./components/QuickConnect";
+import SettingsDialog from "./components/SettingsDialog";
+import Sparkline from "./components/Sparkline";
 import Toasts from "./components/Toasts";
+import { applyTheme, type ThemePref } from "./lib/theme";
 import { localHome, on, schemaVersion, sites as fetchSites, type ConnState } from "./ipc";
 import { useUiStore } from "./store";
 import "./App.css";
@@ -19,6 +22,7 @@ export default function App() {
   const setConnState = useUiStore((s) => s.setConnState);
   const setPaletteOpen = useUiStore((s) => s.setPaletteOpen);
   const setQuickConnect = useUiStore((s) => s.setQuickConnect);
+  const setSettingsOpen = useUiStore((s) => s.setSettingsOpen);
   const connStates = useUiStore((s) => s.connStates);
   const siteList = useUiStore((s) => s.sites);
 
@@ -35,6 +39,15 @@ export default function App() {
       });
     void schemaVersion().then(setDbSchemaVersion).catch(() => setDbSchemaVersion(0));
     void fetchSites().then(setSites).catch(() => undefined);
+    // Settings DB is the theme's source of truth; sync it over the mirror.
+    void import("./ipc").then(({ getSettings }) =>
+      getSettings()
+        .then((cfg) => {
+          const pref = cfg["ui.theme"] as ThemePref;
+          if (pref === "dark" || pref === "light" || pref === "system") applyTheme(pref);
+        })
+        .catch(() => undefined),
+    );
     const offConn = on<ConnState>("site:connstate", (c) => setConnState(c.siteId, c.state));
     return offConn;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -50,16 +63,22 @@ export default function App() {
       if (e.ctrlKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen(!useUiStore.getState().paletteOpen);
-      } else if (e.key === "Tab" && !inField) {
+      } else if (e.key === "Tab" && !inField && !useUiStore.getState().settingsOpen) {
+        // Never hijack Tab while a dialog is open — that would trap keyboard
+        // users inside it with no way to reach its buttons.
         e.preventDefault();
         setActivePane(useUiStore.getState().activePane === 0 ? 1 : 0);
-      } else if (e.key === "Escape" && useUiStore.getState().quickConnect.open) {
-        setQuickConnect(false);
+      } else if (e.ctrlKey && e.key === ",") {
+        e.preventDefault();
+        setSettingsOpen(true);
+      } else if (e.key === "Escape") {
+        if (useUiStore.getState().settingsOpen) setSettingsOpen(false);
+        else if (useUiStore.getState().quickConnect.open) setQuickConnect(false);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [setActivePane, setPaletteOpen, setQuickConnect]);
+  }, [setActivePane, setPaletteOpen, setQuickConnect, setSettingsOpen]);
 
   const connectedCount = Object.values(connStates).filter((s) => s === "connected").length;
 
@@ -73,6 +92,9 @@ export default function App() {
         <span className="kbd">Ctrl+K</span>
         <button className="btn btn--primary" onClick={() => setQuickConnect(true, activePane)}>
           Connect
+        </button>
+        <button className="btn" title="Settings (Ctrl+,)" aria-label="Settings" onClick={() => setSettingsOpen(true)}>
+          ⚙
         </button>
       </header>
 
@@ -97,7 +119,7 @@ export default function App() {
             </>
           )}
         </span>
-        <span>queue: idle</span>
+        <Sparkline />
         <span className="spacer" />
         <span className={dbVersion > 0 ? "" : "status--warn"}>
           {dbVersion > 0 ? `db v${dbVersion}` : "db unavailable"}
@@ -106,6 +128,7 @@ export default function App() {
 
       <CommandPalette />
       <QuickConnect />
+      <SettingsDialog />
       <HostKeyDialog />
       <Toasts />
     </div>

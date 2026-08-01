@@ -55,6 +55,11 @@ export default function CommandPalette() {
         }),
       },
       { label: "New connection…", run: close(() => setQuickConnect(true, active)) },
+      {
+        label: "Settings",
+        hint: "Ctrl+,",
+        run: close(() => useUiStore.getState().setSettingsOpen(true)),
+      },
     ];
     for (const s of sites) {
       base.push({
@@ -62,7 +67,7 @@ export default function CommandPalette() {
         hint: `${s.username}@${s.host}`,
         run: close(async () => {
           try {
-            const home = await connectAndHome(s.id);
+            const home = await connectAndHome(s.id, s.remotePath);
             setPane(active, s.id, home);
           } catch (err) {
             window.dispatchEvent(

@@ -18,8 +18,12 @@ type Site struct {
 	Username    string `json:"username"`
 	CredRef     string `json:"credRef"`
 	OptionsJSON string `json:"optionsJson"`
-	CreatedAt   string `json:"createdAt"`
-	UpdatedAt   string `json:"updatedAt"`
+	// RemotePath is the directory a pane opens on connect ("" = SFTP home).
+	RemotePath string `json:"remotePath"`
+	// MaxTransfers caps concurrent transfers for this site (0 = global default).
+	MaxTransfers int    `json:"maxTransfers"`
+	CreatedAt    string `json:"createdAt"`
+	UpdatedAt    string `json:"updatedAt"`
 }
 
 var ErrSiteNotFound = errors.New("site not found")
@@ -41,10 +45,10 @@ func (s *Store) SaveSite(site Site) (int64, error) {
 
 	if site.ID == 0 {
 		res, err := s.db.Exec(
-			`INSERT INTO sites(name,protocol,host,port,username,cred_ref,options_json,created_at,updated_at)
-			 VALUES (?,?,?,?,?,?,?,?,?)`,
+			`INSERT INTO sites(name,protocol,host,port,username,cred_ref,options_json,remote_path,max_transfers,created_at,updated_at)
+			 VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
 			site.Name, site.Protocol, site.Host, site.Port, site.Username,
-			site.CredRef, site.OptionsJSON, now, now)
+			site.CredRef, site.OptionsJSON, site.RemotePath, site.MaxTransfers, now, now)
 		if err != nil {
 			return 0, fmt.Errorf("insert site: %w", err)
 		}
@@ -52,10 +56,10 @@ func (s *Store) SaveSite(site Site) (int64, error) {
 	}
 
 	res, err := s.db.Exec(
-		`UPDATE sites SET name=?, protocol=?, host=?, port=?, username=?, cred_ref=?, options_json=?, updated_at=?
+		`UPDATE sites SET name=?, protocol=?, host=?, port=?, username=?, cred_ref=?, options_json=?, remote_path=?, max_transfers=?, updated_at=?
 		 WHERE id=?`,
 		site.Name, site.Protocol, site.Host, site.Port, site.Username,
-		site.CredRef, site.OptionsJSON, now, site.ID)
+		site.CredRef, site.OptionsJSON, site.RemotePath, site.MaxTransfers, now, site.ID)
 	if err != nil {
 		return 0, fmt.Errorf("update site: %w", err)
 	}
@@ -89,7 +93,7 @@ func (s *Store) DeleteSite(id int64) error {
 // Sites lists all saved sites, most recently updated first.
 func (s *Store) Sites() ([]Site, error) {
 	rows, err := s.db.Query(
-		`SELECT id,name,protocol,host,port,username,cred_ref,options_json,created_at,updated_at
+		`SELECT id,name,protocol,host,port,username,cred_ref,options_json,remote_path,max_transfers,created_at,updated_at
 		 FROM sites ORDER BY updated_at DESC, id DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list sites: %w", err)
@@ -100,7 +104,8 @@ func (s *Store) Sites() ([]Site, error) {
 	for rows.Next() {
 		var x Site
 		if err := rows.Scan(&x.ID, &x.Name, &x.Protocol, &x.Host, &x.Port,
-			&x.Username, &x.CredRef, &x.OptionsJSON, &x.CreatedAt, &x.UpdatedAt); err != nil {
+			&x.Username, &x.CredRef, &x.OptionsJSON, &x.RemotePath, &x.MaxTransfers,
+			&x.CreatedAt, &x.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan site: %w", err)
 		}
 		sites = append(sites, x)
@@ -112,10 +117,11 @@ func (s *Store) Sites() ([]Site, error) {
 func (s *Store) SiteByID(id int64) (Site, error) {
 	var x Site
 	err := s.db.QueryRow(
-		`SELECT id,name,protocol,host,port,username,cred_ref,options_json,created_at,updated_at
+		`SELECT id,name,protocol,host,port,username,cred_ref,options_json,remote_path,max_transfers,created_at,updated_at
 		 FROM sites WHERE id=?`, id).
 		Scan(&x.ID, &x.Name, &x.Protocol, &x.Host, &x.Port,
-			&x.Username, &x.CredRef, &x.OptionsJSON, &x.CreatedAt, &x.UpdatedAt)
+			&x.Username, &x.CredRef, &x.OptionsJSON, &x.RemotePath, &x.MaxTransfers,
+			&x.CreatedAt, &x.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Site{}, ErrSiteNotFound
 	}

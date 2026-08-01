@@ -226,6 +226,127 @@
   background: var(--surface-4);
 }
 
+/* context menu (ux-spec §7.7) */
+.ctxmenu {
+  position: fixed;
+  z-index: 300;
+  min-width: 220px;
+  padding: var(--sp-1);
+  background: var(--surface-3);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  animation: pop var(--dur-fast) var(--ease-out);
+}
+.ctxmenu__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  height: 30px;
+  padding: 0 var(--sp-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-mid);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  text-align: left;
+}
+.ctxmenu__item .grow {
+  flex: 1;
+}
+.ctxmenu__item:hover:not(:disabled) {
+  background: var(--surface-4);
+  color: var(--text);
+}
+.ctxmenu__item:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.ctxmenu__item--danger {
+  color: var(--state-error);
+}
+.ctxmenu__hint {
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+}
+
+/* settings dialog */
+.dialog--settings {
+  width: 560px;
+  max-height: 84vh;
+  overflow-y: auto;
+}
+.set-section {
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--border);
+}
+.set-section h3 {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  margin-bottom: var(--sp-3);
+}
+.set-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+  font-size: var(--text-sm);
+  color: var(--text-mid);
+}
+.set-row input {
+  width: 90px;
+  height: 28px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--sp-2);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+.set-inline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.set-note {
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+}
+.set-msg {
+  margin-top: var(--sp-2);
+  user-select: text;
+}
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  margin-bottom: var(--sp-2);
+}
+.segmented button {
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  padding: 5px 14px;
+  cursor: pointer;
+}
+.segmented button + button {
+  border-left: 1px solid var(--border);
+}
+.segmented .seg--on {
+  background: var(--accent);
+  color: var(--surface-0);
+  font-weight: 600;
+}
+
 /* toasts */
 .toasts {
   position: fixed;

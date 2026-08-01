@@ -135,6 +135,7 @@ export namespace main {
 	export class DownloadItem {
 	    src: string;
 	    size: number;
+	    isDir: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new DownloadItem(source);
@@ -144,6 +145,23 @@ export namespace main {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.src = source["src"];
 	        this.size = source["size"];
+	        this.isDir = source["isDir"];
+	    }
+	}
+	export class UploadItem {
+	    src: string;
+	    size: number;
+	    isDir: boolean;
+	
+	    static createFrom(source: any = {}) {
+	        return new UploadItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.src = source["src"];
+	        this.size = source["size"];
+	        this.isDir = source["isDir"];
 	    }
 	}
 
@@ -160,6 +178,8 @@ export namespace queue {
 	    username: string;
 	    credRef: string;
 	    optionsJson: string;
+	    remotePath: string;
+	    maxTransfers: number;
 	    createdAt: string;
 	    updatedAt: string;
 	
@@ -177,6 +197,8 @@ export namespace queue {
 	        this.username = source["username"];
 	        this.credRef = source["credRef"];
 	        this.optionsJson = source["optionsJson"];
+	        this.remotePath = source["remotePath"];
+	        this.maxTransfers = source["maxTransfers"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }

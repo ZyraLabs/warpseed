@@ -17,6 +17,10 @@ export function DisconnectSite(arg1:number):Promise<void>;
 
 export function EnqueueDownloads(arg1:number,arg2:Array<main.DownloadItem>,arg3:string):Promise<Array<number>>;
 
+export function EnqueueUploads(arg1:number,arg2:Array<main.UploadItem>,arg3:string):Promise<Array<number>>;
+
+export function GetSettings():Promise<Record<string, string>>;
+
 export function ListLocal(arg1:string):Promise<localfs.Listing>;
 
 export function ListRemote(arg1:number,arg2:string):Promise<core.Listing>;
@@ -36,6 +40,8 @@ export function ResumeTransfer(arg1:number):Promise<void>;
 export function SaveSite(arg1:queue.Site,arg2:string):Promise<queue.Site>;
 
 export function SchemaVersion():Promise<number>;
+
+export function SetSetting(arg1:string,arg2:string):Promise<void>;
 
 export function Sites():Promise<Array<queue.Site>>;
 

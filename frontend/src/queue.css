@@ -20,6 +20,47 @@
 .dock--active::before {
   opacity: 0.45;
 }
+/* warp-line streak: a light packet sweeps once on transfer start
+   (design-agent polish a; ux-spec §8.2). JS toggles .dock--streak. */
+.dock::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 40%;
+  height: 2px;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--accent) 35%,
+    color-mix(in oklch, var(--accent) 55%, white) 50%,
+    var(--accent) 65%,
+    transparent
+  );
+}
+.dock--streak::after {
+  animation: warp-streak 400ms var(--ease-out) 1;
+}
+@keyframes warp-streak {
+  from {
+    transform: translateX(-100%);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(350%);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the animation firing (imperceptibly) so animationend still resets
+     the streak state — 'animation: none' would strand it on forever. */
+  .dock--streak::after {
+    animation-duration: 1ms;
+    visibility: hidden;
+  }
+}
 
 .dock__strip {
   display: flex;
@@ -127,8 +168,18 @@
 .trow--failed .trow__icon {
   color: var(--state-error);
 }
-.trow--completed {
-  opacity: 0.55;
+/* completed rows: data recedes after a beat, the green check stays
+   full-strength so "done" remains scannable (design-agent polish b) */
+.trow--completed .trow__name,
+.trow--completed .trow__pct,
+.trow--completed .trow__rate,
+.trow--completed .trow__route {
+  color: var(--text-faint);
+  transition: color 600ms var(--ease-out) 900ms;
+}
+.trow--completed .trow__bar {
+  opacity: 0.45;
+  transition: opacity 600ms var(--ease-out) 900ms;
 }
 .trow--cancelled {
   opacity: 0.4;

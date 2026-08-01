@@ -7,6 +7,8 @@ import {
   DeleteSite,
   DisconnectSite,
   EnqueueDownloads,
+  EnqueueUploads,
+  GetSettings,
   ListLocal,
   ListRemote,
   LocalHome,
@@ -17,6 +19,7 @@ import {
   ResumeTransfer,
   SaveSite,
   SchemaVersion,
+  SetSetting,
   Sites,
   TransfersList,
 } from "../wailsjs/go/main/App";
@@ -50,6 +53,8 @@ export interface Site {
   username: string;
   credRef: string;
   optionsJson: string;
+  remotePath: string;
+  maxTransfers: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -116,6 +121,13 @@ export interface Transfer {
 export interface DownloadItem {
   src: string;
   size: number;
+  isDir: boolean;
+}
+
+export interface UploadItem {
+  src: string;
+  size: number;
+  isDir: boolean;
 }
 
 export interface TransferProgress {
@@ -130,9 +142,20 @@ export interface TransferState {
   error?: string;
 }
 
-/** Connect a site's browse session and resolve its SFTP home directory. */
-export async function connectAndHome(id: number): Promise<string> {
+/** Connect a site's browse session and resolve its opening directory: the
+    site's configured initial remote path when it still exists, else the
+    SFTP home (a stale configured path must not wedge the pane). */
+export async function connectAndHome(id: number, remotePath?: string): Promise<string> {
   await ConnectSite(id);
+  const configured = remotePath?.trim();
+  if (configured) {
+    try {
+      await ListRemote(id, configured);
+      return configured;
+    } catch {
+      // fall through to home
+    }
+  }
   return (RemoteHome(id) as Promise<string>).catch(() => "/");
 }
 
@@ -141,6 +164,16 @@ export const enqueueDownloads = (
   items: DownloadItem[],
   localDir: string,
 ): Promise<number[]> => EnqueueDownloads(siteId, items as never, localDir) as Promise<number[]>;
+
+export const enqueueUploads = (
+  siteId: number,
+  items: UploadItem[],
+  remoteDir: string,
+): Promise<number[]> => EnqueueUploads(siteId, items as never, remoteDir) as Promise<number[]>;
+
+export const getSettings = (): Promise<Record<string, string>> =>
+  GetSettings() as Promise<Record<string, string>>;
+export const setSetting = (key: string, value: string): Promise<void> => SetSetting(key, value);
 
 export const transfersList = (): Promise<Transfer[]> =>
   TransfersList() as unknown as Promise<Transfer[]>;

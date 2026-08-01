@@ -160,7 +160,7 @@
   position: relative;
 }
 .pane__scroll:focus-visible {
-  box-shadow: inset 0 0 0 1px var(--accent-dim);
+  box-shadow: inset 0 0 0 1px var(--accent-dim), inset 0 0 0 3px var(--accent-glow);
 }
 .row {
   position: absolute;
@@ -181,6 +181,23 @@
 }
 .row:hover {
   background: var(--surface-3);
+  color: var(--text);
+}
+/* bevel sheen on hover: white top-edge + shaded bottom, opacity-only —
+   works in both themes (design-agent polish c) */
+.row::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, oklch(100% 0 0 / 0.07), transparent 40%),
+    linear-gradient(0deg, oklch(0% 0 0 / 0.06), transparent 35%);
+  opacity: 0;
+  transition: opacity var(--dur-instant);
+}
+.row:hover::after {
+  opacity: 1;
 }
 .row--dir {
   color: var(--text);

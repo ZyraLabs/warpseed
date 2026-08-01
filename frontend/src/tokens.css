@@ -1,23 +1,25 @@
-/* warpseed design tokens v2 — ux-spec §6. Instrument-panel dark (deliberate:
-   long transfer sessions, dense data). One accent; semantic colors reserved
-   for transfer states; loud red reserved for real alarms. */
+/* warpseed design tokens v2.1 — ux-spec §6 + design-agent theme pass.
+   Dark is the identity and the no-attribute fallback; light activates via
+   [data-theme="light"] on <html>. All values contrast-verified. */
 :root {
+  color-scheme: dark;
+
   /* surfaces — 5 layers, hue 260, chroma rises slightly with elevation */
-  --surface-0: oklch(16% 0.012 260);
+  --surface-0: oklch(15% 0.014 260);
   --surface-1: oklch(20% 0.014 260);
   --surface-2: oklch(24% 0.016 260);
   --surface-3: oklch(29% 0.018 260);
   --surface-4: oklch(34% 0.02 260);
 
   /* text tiers */
-  --text: oklch(90% 0.008 250);
+  --text: oklch(92% 0.006 250);
   --text-mid: oklch(74% 0.012 250);
   --text-dim: oklch(62% 0.014 250);
-  --text-faint: oklch(46% 0.012 250);
+  --text-faint: oklch(50% 0.012 250);
 
   /* accent */
   --accent: oklch(78% 0.14 190);
-  --accent-dim: oklch(60% 0.1 190);
+  --accent-dim: oklch(63% 0.11 190);
   --accent-glow: oklch(78% 0.14 190 / 0.18);
 
   /* semantic transfer states — never decorative */
@@ -34,11 +36,10 @@
   --proto-webdav: oklch(70% 0.12 300);
 
   --border: oklch(29% 0.014 260);
-  --border-strong: oklch(38% 0.018 260);
-  --scrim: oklch(10% 0.01 260 / 0.6);
+  --border-strong: oklch(41% 0.02 260);
+  --scrim: oklch(8% 0.02 260 / 0.55);
 
-  /* typography — Segoe UI Variable is native on Win11 (Inter subset lands
-     with the bundled-font pass) */
+  /* typography — Segoe UI Variable is native on Win11 */
   --font-ui: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
 
@@ -68,6 +69,49 @@
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
 
-  --shadow-1: 0 8px 24px oklch(0% 0 0 / 0.4);
-  --shadow-2: 0 16px 48px oklch(0% 0 0 / 0.5);
+  /* hue-tinted shadows sit in the palette; pure black reads pasted-on */
+  --shadow-1: 0 8px 24px oklch(10% 0.03 260 / 0.5);
+  --shadow-2: 0 16px 48px oklch(8% 0.03 260 / 0.55);
+}
+
+/* Light theme — "the same instrument with the backlight off": bright slate,
+   deep teal ink, recessed wells. Elevation is deliberately non-monotonic:
+   surface-0 recesses, surface-3 dips darker for hover, surface-4 lifts to
+   paper for dialogs. All text tiers ≥4.5:1 except --text-faint (by contract). */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --surface-0: oklch(94.5% 0.006 260); /* app frame, wells, progress tracks */
+  --surface-1: oklch(97.5% 0.004 260); /* pane listing */
+  --surface-2: oklch(95.5% 0.006 260); /* toolbars, path bars, footers */
+  --surface-3: oklch(92% 0.008 260);   /* hover, popovers, palette */
+  --surface-4: oklch(99.3% 0.002 260); /* dialogs — lifts to white */
+
+  --text: oklch(22% 0.012 250);
+  --text-mid: oklch(37% 0.014 250);
+  --text-dim: oklch(45% 0.015 250);
+  --text-faint: oklch(62% 0.012 250);
+
+  --accent: oklch(48% 0.105 190);      /* warp teal at ink weight */
+  --accent-dim: oklch(60% 0.09 190);
+  --accent-glow: oklch(60% 0.12 190 / 0.14);
+
+  --state-active: var(--accent);
+  --state-done: oklch(46% 0.13 150);
+  --state-paused: oklch(52% 0.11 85);  /* amber becomes ochre ink */
+  --state-error: oklch(48% 0.18 25);
+  --state-queued: var(--text-dim);
+
+  --proto-sftp: var(--accent);
+  --proto-ftp: oklch(50% 0.10 85);
+  --proto-s3: oklch(50% 0.12 55);
+  --proto-webdav: oklch(46% 0.12 300);
+
+  --border: oklch(86% 0.008 260);
+  --border-strong: oklch(76% 0.012 260);
+  --scrim: oklch(40% 0.02 260 / 0.32);
+
+  /* light needs tighter, softer, hue-tinted shadows: ambient + keyline */
+  --shadow-1: 0 4px 16px oklch(30% 0.02 260 / 0.14), 0 1px 3px oklch(30% 0.02 260 / 0.10);
+  --shadow-2: 0 12px 32px oklch(30% 0.02 260 / 0.18), 0 2px 6px oklch(30% 0.02 260 / 0.10);
 }

@@ -98,6 +98,18 @@
 .status--warn {
   color: var(--state-error);
 }
+.sparkline {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.sparkline canvas {
+  display: block;
+}
+.sparkline__label {
+  color: var(--accent);
+  min-width: 72px;
+}
 .conn-dot {
   display: inline-block;
   width: 7px;

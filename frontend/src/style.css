@@ -30,9 +30,12 @@ textarea {
   color: inherit;
 }
 
-:focus-visible {
+/* One focus language in both themes: accent ring + soft glow halo.
+   :where() carries zero specificity so intentional opt-outs still win. */
+:where(button, [role="button"], input, select, a):focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: 1px;
+  box-shadow: 0 0 0 4px var(--accent-glow);
 }
 
 ::-webkit-scrollbar {
@@ -46,6 +49,23 @@ textarea {
 }
 ::-webkit-scrollbar-thumb:hover {
   background: var(--border-strong);
+}
+
+/* light-theme scrollbars: rail-less, inset tinted thumb */
+[data-theme="light"] {
+  scrollbar-color: oklch(80% 0.012 260) transparent;
+}
+[data-theme="light"] ::-webkit-scrollbar-track {
+  background: transparent;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: oklch(80% 0.012 260);
+  border-radius: 5px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background-color: oklch(66% 0.02 260);
 }
 
 @media (prefers-reduced-motion: reduce) {

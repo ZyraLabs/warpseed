@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"path"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -111,6 +114,30 @@ func (a *App) shutdown(_ context.Context) {
 
 var errNoStore = errors.New("queue database unavailable")
 
+// safeLocalName reduces a server-supplied name to a single local path
+// element. Remote names are attacker-controlled: a POSIX filename may legally
+// contain '\' or "..", both of which Windows treats as path syntax, so
+// path.Base alone cannot keep a download inside its destination directory.
+func safeLocalName(remote string) (string, error) {
+	name := path.Base(remote)
+	name = strings.ReplaceAll(name, `\`, "_")
+	name = filepath.Base(name)
+	if name == "" || name == "." || name == ".." || !filepath.IsLocal(name) {
+		return "", fmt.Errorf("refusing unsafe remote file name %q", remote)
+	}
+	return name, nil
+}
+
+// safeLocalJoin places a remote-relative path under root, refusing anything
+// that escapes it.
+func safeLocalJoin(root, relative string) (string, error) {
+	rel := filepath.FromSlash(relative)
+	if rel == "" || !filepath.IsLocal(rel) {
+		return "", fmt.Errorf("refusing unsafe remote path %q", relative)
+	}
+	return filepath.Join(root, rel), nil
+}
+
 // --- Local filesystem bindings ---
 
 // ListLocal returns a sorted directory listing.
@@ -156,6 +183,18 @@ func (a *App) Sites() ([]queue.Site, error) {
 func (a *App) SaveSite(site queue.Site, password string) (queue.Site, error) {
 	if a.store == nil {
 		return queue.Site{}, errNoStore
+	}
+	// Updates must never silently drop fields the caller didn't send —
+	// blanking cred_ref would orphan the stored credential and break connect.
+	if site.ID != 0 {
+		if prev, err := a.store.SiteByID(site.ID); err == nil {
+			if site.CredRef == "" {
+				site.CredRef = prev.CredRef
+			}
+			if site.OptionsJSON == "" {
+				site.OptionsJSON = prev.OptionsJSON
+			}
+		}
 	}
 	id, err := a.store.SaveSite(site)
 	if err != nil {
@@ -296,24 +335,58 @@ func (a *App) ResolvePrompt(promptID string, answer bool) {
 
 // --- Transfer bindings ---
 
-// DownloadItem is one remote file selected for download.
+// DownloadItem is one remote file or folder selected for download.
 type DownloadItem struct {
-	Src  string `json:"src"`
-	Size int64  `json:"size"`
+	Src   string `json:"src"`
+	Size  int64  `json:"size"`
+	IsDir bool   `json:"isDir"`
 }
 
-// EnqueueDownloads queues remote files for download into localDir and wakes
-// the dispatcher. Returns the new transfer ids.
+// UploadItem is one local file or folder selected for upload.
+type UploadItem struct {
+	Src   string `json:"src"`
+	Size  int64  `json:"size"`
+	IsDir bool   `json:"isDir"`
+}
+
+// EnqueueDownloads queues remote files for download into localDir. Folders
+// are expanded in the background over the site's browse connection,
+// preserving their relative structure under localDir/<foldername>/.
 func (a *App) EnqueueDownloads(siteID int64, items []DownloadItem, localDir string) ([]int64, error) {
 	if a.store == nil {
 		return nil, errNoStore
 	}
-	ids := make([]int64, 0, len(items))
+	// Validate preconditions before enqueuing anything so the call is
+	// all-or-nothing (a partial failure would queue files while reporting
+	// total failure to the UI).
+	var dirs, files []DownloadItem
 	for _, it := range items {
+		if it.IsDir {
+			dirs = append(dirs, it)
+		} else {
+			files = append(files, it)
+		}
+	}
+	var client *sftpfast.Client
+	if len(dirs) > 0 {
+		a.mu.Lock()
+		client = a.sessions[siteID]
+		a.mu.Unlock()
+		if client == nil {
+			return nil, fmt.Errorf("connect the site before queuing folders")
+		}
+	}
+
+	ids := make([]int64, 0, len(files))
+	for _, it := range files {
+		name, err := safeLocalName(it.Src)
+		if err != nil {
+			return ids, err
+		}
 		id, err := a.store.EnqueueTransfer(queue.Transfer{
 			SiteID: siteID,
 			Src:    it.Src,
-			Dst:    filepath.Join(localDir, path.Base(it.Src)),
+			Dst:    filepath.Join(localDir, name),
 			Size:   it.Size,
 		})
 		if err != nil {
@@ -321,9 +394,160 @@ func (a *App) EnqueueDownloads(siteID int64, items []DownloadItem, localDir stri
 		}
 		ids = append(ids, id)
 	}
+
+	if len(dirs) > 0 {
+		go a.expandRemoteDirs(client, siteID, dirs, localDir)
+	}
+
 	a.sink.Emit("queue:changed", nil)
 	a.dispatcher.Wake()
 	return ids, nil
+}
+
+// expandRemoteDirs walks queued folders and enqueues their files. Runs in a
+// goroutine: big trees must never block the UI thread.
+func (a *App) expandRemoteDirs(client *sftpfast.Client, siteID int64, dirs []DownloadItem, localDir string) {
+	total := 0
+	skipped := 0
+	for _, dir := range dirs {
+		root := path.Clean(dir.Src)
+		rootName, nerr := safeLocalName(root)
+		if nerr != nil {
+			a.sink.Emit("app:error", nerr.Error())
+			continue
+		}
+		err := client.WalkFiles(a.ctx, root, func(remote string, size int64) error {
+			rel := strings.TrimPrefix(remote, root)
+			rel = strings.TrimPrefix(rel, "/")
+			// Every path component here is server-supplied; keep it inside
+			// localDir/<folder>/ or skip the entry entirely.
+			dst, jerr := safeLocalJoin(filepath.Join(localDir, rootName), rel)
+			if jerr != nil {
+				skipped++
+				return nil
+			}
+			if _, err := a.store.EnqueueTransfer(queue.Transfer{
+				SiteID: siteID, Src: remote, Dst: dst, Size: size,
+			}); err != nil {
+				return err
+			}
+			total++
+			if total%25 == 0 {
+				a.sink.Emit("queue:changed", nil)
+				a.dispatcher.Wake()
+			}
+			return nil
+		})
+		if err != nil {
+			a.sink.Emit("app:error", fmt.Sprintf("folder %s: %v", path.Base(root), err))
+		}
+	}
+	msg := fmt.Sprintf("Queued %d file(s) from %d folder(s)", total, len(dirs))
+	if skipped > 0 {
+		msg += fmt.Sprintf(" · %d skipped (unsafe names)", skipped)
+	}
+	a.sink.Emit("app:info", msg)
+	a.sink.Emit("queue:changed", nil)
+	a.dispatcher.Wake()
+}
+
+// EnqueueUploads queues local files/folders for upload into remoteDir on the
+// site. Folder trees are expanded in the background off the local disk.
+func (a *App) EnqueueUploads(siteID int64, items []UploadItem, remoteDir string) ([]int64, error) {
+	if a.store == nil {
+		return nil, errNoStore
+	}
+	ids := make([]int64, 0, len(items))
+	var dirs []UploadItem
+	for _, it := range items {
+		if it.IsDir {
+			dirs = append(dirs, it)
+			continue
+		}
+		id, err := a.store.EnqueueTransfer(queue.Transfer{
+			SiteID:    siteID,
+			Direction: "upload",
+			Src:       it.Src,
+			Dst:       path.Join(remoteDir, filepath.Base(it.Src)),
+			Size:      it.Size,
+		})
+		if err != nil {
+			return ids, err
+		}
+		ids = append(ids, id)
+	}
+
+	if len(dirs) > 0 {
+		go a.expandLocalDirs(siteID, dirs, remoteDir)
+	}
+
+	a.sink.Emit("queue:changed", nil)
+	a.dispatcher.Wake()
+	return ids, nil
+}
+
+func (a *App) expandLocalDirs(siteID int64, dirs []UploadItem, remoteDir string) {
+	const maxEntries = 50000
+	total := 0
+	skipped := 0
+	for _, dir := range dirs {
+		root := filepath.Clean(dir.Src)
+		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+			if cerr := a.ctx.Err(); cerr != nil {
+				return cerr
+			}
+			if err != nil {
+				// An unreadable subtree must not abort the whole walk.
+				skipped++
+				if d != nil && d.IsDir() {
+					return fs.SkipDir
+				}
+				return nil
+			}
+			if d.IsDir() {
+				return nil
+			}
+			// Regular files only: following symlinks would upload their
+			// targets from outside the selected tree.
+			if !d.Type().IsRegular() {
+				skipped++
+				return nil
+			}
+			if total >= maxEntries {
+				return fmt.Errorf("more than %d files under %q — refusing runaway walk", maxEntries, root)
+			}
+			info, ierr := d.Info()
+			if ierr != nil {
+				return nil // vanished mid-walk; skip
+			}
+			rel, rerr := filepath.Rel(root, p)
+			if rerr != nil {
+				return rerr
+			}
+			dst := path.Join(remoteDir, filepath.Base(root), filepath.ToSlash(rel))
+			if _, err := a.store.EnqueueTransfer(queue.Transfer{
+				SiteID: siteID, Direction: "upload", Src: p, Dst: dst, Size: info.Size(),
+			}); err != nil {
+				return err
+			}
+			total++
+			if total%25 == 0 {
+				a.sink.Emit("queue:changed", nil)
+				a.dispatcher.Wake()
+			}
+			return nil
+		})
+		if err != nil {
+			a.sink.Emit("app:error", fmt.Sprintf("folder %s: %v", filepath.Base(root), err))
+		}
+	}
+	uploadMsg := fmt.Sprintf("Queued %d file(s) from %d folder(s)", total, len(dirs))
+	if skipped > 0 {
+		uploadMsg += fmt.Sprintf(" · %d skipped (links/unreadable)", skipped)
+	}
+	a.sink.Emit("app:info", uploadMsg)
+	a.sink.Emit("queue:changed", nil)
+	a.dispatcher.Wake()
 }
 
 // TransfersList returns the newest queue rows for the dock.
@@ -351,6 +575,75 @@ func (a *App) ClearDoneTransfers() error {
 	_, err := a.store.ClearFinished()
 	a.sink.Emit("queue:changed", nil)
 	return err
+}
+
+// --- Settings bindings ---
+
+// settingValidators allowlists the keys the frontend may write AND the
+// values it may write: a persisted 0 concurrency would stall the queue
+// forever, so bad values are rejected at the boundary, not absorbed.
+var settingValidators = map[string]func(string) error{
+	"transfers.global_max": intRange(1, 16),
+	"transfers.site_max":   intRange(1, 8),
+	"bw.limit_bytes":       intRange(0, 1<<40),
+	"bw.percent":           intRange(10, 95),
+	"bw.mode":              oneOf("off", "fixed", "percent"),
+	"ui.theme":             oneOf("dark", "light", "system"),
+}
+
+func intRange(lo, hi int) func(string) error {
+	return func(v string) error {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("expected a number, got %q", v)
+		}
+		if n < lo || n > hi {
+			return fmt.Errorf("value %d out of range %d–%d", n, lo, hi)
+		}
+		return nil
+	}
+}
+
+func oneOf(allowed ...string) func(string) error {
+	return func(v string) error {
+		for _, a := range allowed {
+			if v == a {
+				return nil
+			}
+		}
+		return fmt.Errorf("value %q must be one of %v", v, allowed)
+	}
+}
+
+// GetSettings returns all settings for the settings dialog.
+func (a *App) GetSettings() (map[string]string, error) {
+	if a.store == nil {
+		return nil, errNoStore
+	}
+	return a.store.AllSettings()
+}
+
+// SetSetting updates one allowlisted setting and nudges the dispatcher so
+// caps/throttle apply immediately.
+func (a *App) SetSetting(key, value string) error {
+	if a.store == nil {
+		return errNoStore
+	}
+	validate, ok := settingValidators[key]
+	if !ok {
+		return fmt.Errorf("setting %q is not user-settable", key)
+	}
+	if err := validate(value); err != nil {
+		return fmt.Errorf("setting %s: %w", key, err)
+	}
+	if err := a.store.SetSetting(key, value); err != nil {
+		return err
+	}
+	a.sink.Emit("settings:changed", map[string]string{"key": key, "value": value})
+	if a.dispatcher != nil {
+		a.dispatcher.Wake()
+	}
+	return nil
 }
 
 func (a *App) emitConnState(siteID int64, state string) {

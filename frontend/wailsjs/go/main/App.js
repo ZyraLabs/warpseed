@@ -26,6 +26,14 @@ export function EnqueueDownloads(arg1, arg2, arg3) {
   return window['go']['main']['App']['EnqueueDownloads'](arg1, arg2, arg3);
 }
 
+export function EnqueueUploads(arg1, arg2, arg3) {
+  return window['go']['main']['App']['EnqueueUploads'](arg1, arg2, arg3);
+}
+
+export function GetSettings() {
+  return window['go']['main']['App']['GetSettings']();
+}
+
 export function ListLocal(arg1) {
   return window['go']['main']['App']['ListLocal'](arg1);
 }
@@ -64,6 +72,10 @@ export function SaveSite(arg1, arg2) {
 
 export function SchemaVersion() {
   return window['go']['main']['App']['SchemaVersion']();
+}
+
+export function SetSetting(arg1, arg2) {
+  return window['go']['main']['App']['SetSetting'](arg1, arg2);
 }
 
 export function Sites() {

@@ -39,7 +39,7 @@ export default function QuickConnect() {
     setBusy(true);
     setError("");
     try {
-      const home = await connectAndHome(s.id);
+      const home = await connectAndHome(s.id, s.remotePath);
       setPane(side, s.id, home);
       close();
     } catch (err) {

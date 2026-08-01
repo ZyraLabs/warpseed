@@ -14,12 +14,16 @@ import (
 // --inplace hazard).
 const PartSuffix = ".wspart"
 
-// Download fetches remote → local with byte-level resume. progress receives
-// byte deltas as they land (caller coalesces for the UI). Cancelling ctx
-// aborts promptly; the .wspart file stays for the next resume.
-func (c *Client) Download(ctx context.Context, remotePath, localPath string, progress func(delta int64)) error {
+// Download fetches remote → local with byte-level resume. onStart reports
+// the resume offset once it is final; progress receives byte deltas as they
+// land (caller coalesces for the UI). Cancelling ctx aborts promptly; the
+// .wspart file stays for the next resume.
+func (c *Client) Download(ctx context.Context, remotePath, localPath string, onStart func(offset int64), progress func(delta int64)) error {
 	if progress == nil {
 		progress = func(int64) {}
+	}
+	if onStart == nil {
+		onStart = func(int64) {}
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("download cancelled: %w", err)
@@ -59,6 +63,7 @@ func (c *Client) Download(ctx context.Context, remotePath, localPath string, pro
 			return fmt.Errorf("truncate stale part: %w", err)
 		}
 	}
+	onStart(offset)
 
 	if offset < remoteSize {
 		if _, err := rf.Seek(offset, io.SeekStart); err != nil {

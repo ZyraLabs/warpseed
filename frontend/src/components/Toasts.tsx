@@ -21,6 +21,7 @@ export default function Toasts() {
       setTimeout(() => setToasts((ts) => ts.filter((x) => x.id !== t.id)), 5000);
     };
     const offErr = on<string>("app:error", (msg) => push("error", msg));
+    const offInfo = on<string>("app:info", (msg) => push("success", msg));
     const local = (ev: Event) => {
       const { kind, text } = (ev as CustomEvent<{ kind: Toast["kind"]; text: string }>).detail;
       push(kind, text);
@@ -28,6 +29,7 @@ export default function Toasts() {
     window.addEventListener("ws:toast", local);
     return () => {
       offErr();
+      offInfo();
       window.removeEventListener("ws:toast", local);
     };
   }, []);

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { usePaneNav } from "../hooks/usePaneNav";
-import { connectAndHome, enqueueDownloads, localHome, type FsEntry } from "../ipc";
+import { connectAndHome, enqueueDownloads, enqueueUploads, localHome, type FsEntry } from "../ipc";
 import { formatSize, formatTime } from "../lib/format";
 import { useUiStore, type PaneSide } from "../store";
 import Breadcrumb from "./Breadcrumb";
+import ContextMenu, { type MenuItem } from "./ContextMenu";
 import DirTree from "./DirTree";
 
 function toast(kind: "info" | "error" | "success", text: string) {
@@ -43,6 +44,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const [filter, setFilter] = useState<string | null>(null);
   const [editReq, setEditReq] = useState(0);
   const [treeOpen, setTreeOpen] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry } | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -58,6 +60,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
     setCursor(0);
     setMarks(new Set());
     setFilter(null);
+    setMenu(null); // a menu left open would act on the previous directory
     scrollRef.current?.scrollTo({ top: 0 });
   }, [nav.listing?.path]);
 
@@ -90,25 +93,50 @@ export default function FilePane({ side }: { side: PaneSide }) {
         toast("error", "The other pane must be This PC to receive downloads");
         return;
       }
-      const files = items.filter((e) => !e.isDir);
-      const skippedDirs = items.length - files.length;
-      if (files.length === 0) {
-        toast("error", skippedDirs > 0 ? "Folder downloads arrive next increment" : "Nothing selected to transfer");
+      if (items.length === 0) {
+        toast("error", "Nothing selected to transfer");
         return;
       }
       const base = nav.listing.path.endsWith("/") ? nav.listing.path : nav.listing.path + "/";
       try {
         await enqueueDownloads(
           source,
-          files.map((e) => ({ src: base + e.name, size: e.size })),
+          items.map((e) => ({ src: base + e.name, size: e.size, isDir: e.isDir })),
           other.path,
         );
         useUiStore.getState().setQueueOpen(true);
-        toast(
-          "success",
-          `Queued ${files.length} download${files.length > 1 ? "s" : ""}` +
-            (skippedDirs ? ` · ${skippedDirs} folder(s) skipped` : ""),
+        toast("success", `Queued ${items.length} item${items.length > 1 ? "s" : ""} for download`);
+      } catch (err) {
+        toast("error", String(err));
+      }
+    },
+    [source, side, nav.listing],
+  );
+
+  // uploadItems queues local files/folders for upload into the OTHER pane's
+  // remote directory.
+  const uploadItems = useCallback(
+    async (items: FsEntry[]) => {
+      if (source !== "local" || !nav.listing) return;
+      const other = useUiStore.getState().panes[side === 0 ? 1 : 0];
+      if (typeof other.source !== "number") {
+        toast("error", "The other pane must be a connected site to receive uploads");
+        return;
+      }
+      if (items.length === 0) {
+        toast("error", "Nothing selected to transfer");
+        return;
+      }
+      const sep = nav.listing.path.includes("\\") ? "\\" : "/";
+      const base = nav.listing.path.endsWith(sep) ? nav.listing.path : nav.listing.path + sep;
+      try {
+        await enqueueUploads(
+          other.source,
+          items.map((e) => ({ src: base + e.name, size: e.size, isDir: e.isDir })),
+          other.path,
         );
+        useUiStore.getState().setQueueOpen(true);
+        toast("success", `Queued ${items.length} item${items.length > 1 ? "s" : ""} for upload`);
       } catch (err) {
         toast("error", String(err));
       }
@@ -126,10 +154,15 @@ export default function FilePane({ side }: { side: PaneSide }) {
       } else if (typeof source === "number") {
         void enqueueItems([e]); // double-click a remote file = download it
       } else {
-        toast("info", "Uploads arrive next increment — F5 in a remote pane downloads today");
+        const other = useUiStore.getState().panes[side === 0 ? 1 : 0];
+        if (typeof other.source === "number") {
+          void uploadItems([e]); // double-click a local file = upload it
+        } else {
+          toast("info", "Connect a site in the other pane to transfer");
+        }
       }
     },
-    [nav, source, enqueueItems],
+    [nav, source, side, enqueueItems, uploadItems],
   );
 
   const toggleMark = useCallback((name: string) => {
@@ -194,12 +227,50 @@ export default function FilePane({ side }: { side: PaneSide }) {
             ? [entries[cursor]]
             : [];
         if (typeof source === "number") void enqueueItems(sel);
-        else toast("info", "Uploads arrive next increment — F5 in a remote pane downloads");
+        else void uploadItems(sel);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isActive, nav, marks, entries, cursor, source, enqueueItems]);
+  }, [isActive, nav, marks, entries, cursor, source, enqueueItems, uploadItems]);
+
+  // Right-click menu items for the entry under the pointer (acting on the
+  // full mark set when the entry is part of it).
+  const buildMenu = (entry: FsEntry): MenuItem[] => {
+    const sel =
+      marks.size && marks.has(entry.name) ? entries.filter((x) => marks.has(x.name)) : [entry];
+    const count = sel.length > 1 ? ` (${sel.length})` : "";
+    const other = useUiStore.getState().panes[side === 0 ? 1 : 0];
+    const items: MenuItem[] = [];
+    if (typeof source === "number") {
+      items.push({
+        label: `Download${count}`,
+        hint: "F5",
+        disabled: other.source !== "local",
+        run: () => void enqueueItems(sel),
+      });
+    } else {
+      items.push({
+        label: `Upload${count}`,
+        hint: "F5",
+        disabled: typeof other.source !== "number",
+        run: () => void uploadItems(sel),
+      });
+    }
+    if (entry.isDir) {
+      items.push({ label: "Open", hint: "Enter", run: () => open(entry) });
+    }
+    items.push({
+      label: "Copy path",
+      run: () => {
+        const p = nav.listing?.path ?? "";
+        const sep = p.includes("\\") ? "\\" : "/";
+        void navigator.clipboard.writeText((p.endsWith(sep) ? p : p + sep) + entry.name);
+      },
+    });
+    items.push({ label: "Refresh", hint: "Ctrl+R", run: nav.reload });
+    return items;
+  };
 
   const onListKeyDown = (ev: React.KeyboardEvent) => {
     if (!entries.length && !["Backspace"].includes(ev.key)) return;
@@ -272,7 +343,8 @@ export default function FilePane({ side }: { side: PaneSide }) {
     } else {
       const id = Number(value);
       try {
-        const home = await connectAndHome(id);
+        const site = useUiStore.getState().sites.find((s) => s.id === id);
+        const home = await connectAndHome(id, site?.remotePath);
         setPane(side, id, home);
       } catch (err) {
         window.dispatchEvent(
@@ -419,6 +491,12 @@ export default function FilePane({ side }: { side: PaneSide }) {
                     setCursor(vi.index);
                   }}
                   onDoubleClick={() => open(e)}
+                  onContextMenu={(ev) => {
+                    ev.preventDefault();
+                    setActivePane(side);
+                    setCursor(vi.index);
+                    setMenu({ x: ev.clientX, y: ev.clientY, entry: e });
+                  }}
                   role="row"
                   aria-selected={marks.has(e.name)}
                 >
@@ -436,6 +514,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
       )}
         </div>
       </div>
+
+      {menu && (
+        <ContextMenu x={menu.x} y={menu.y} items={buildMenu(menu.entry)} onClose={() => setMenu(null)} />
+      )}
 
       <footer className="pane__status">
         <span>{all.length} items</span>

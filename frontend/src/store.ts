@@ -28,6 +28,7 @@ interface UiState {
   transfers: Transfer[];
   progress: Record<number, ProgressSample>;
   queueOpen: boolean;
+  settingsOpen: boolean;
 
   setPane: (side: PaneSide, source: PaneSource, path: string) => void;
   setPath: (side: PaneSide, path: string) => void;
@@ -41,6 +42,7 @@ interface UiState {
   applyProgress: (id: number, bytes: number, size: number) => void;
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
+  setSettingsOpen: (open: boolean) => void;
 }
 
 export const useUiStore = create<UiState>((set) => ({
@@ -57,6 +59,7 @@ export const useUiStore = create<UiState>((set) => ({
   transfers: [],
   progress: {},
   queueOpen: false,
+  settingsOpen: false,
 
   setPane: (side, source, path) =>
     set((s) => {
@@ -97,4 +100,5 @@ export const useUiStore = create<UiState>((set) => ({
       ),
     })),
   setQueueOpen: (queueOpen) => set({ queueOpen }),
+  setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
 }));

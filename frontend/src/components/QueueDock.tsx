@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   cancelTransfer,
   clearDoneTransfers,
@@ -37,6 +37,7 @@ function eta(bytes: number, size: number, rate: number): string {
 /** Persistent queue dock (ux-spec §4): collapsed aggregate strip, expandable
     row list, pause/resume/cancel with byte-resume semantics. */
 export default function QueueDock() {
+  const [streak, setStreak] = useState(false);
   const transfers = useUiStore((s) => s.transfers);
   const progress = useUiStore((s) => s.progress);
   const open = useUiStore((s) => s.queueOpen);
@@ -53,9 +54,10 @@ export default function QueueDock() {
     const offProgress = on<TransferProgress>("transfer:progress", (p) =>
       applyProgress(p.id, p.bytes, p.size),
     );
-    const offState = on<TransferState>("transfer:state", (s) =>
-      patchTransferState(s.id, s.state, s.error),
-    );
+    const offState = on<TransferState>("transfer:state", (s) => {
+      patchTransferState(s.id, s.state, s.error);
+      if (s.state === "active") setStreak(true); // warp-line streak (§8.2)
+    });
     return () => {
       offChanged();
       offProgress();
@@ -78,7 +80,10 @@ export default function QueueDock() {
   const doneBytes = incomplete.reduce((s, t) => s + t.bytes, 0);
 
   return (
-    <div className={`dock ${active.length ? "dock--active" : ""}`}>
+    <div
+      className={`dock ${active.length ? "dock--active" : ""} ${streak ? "dock--streak" : ""}`}
+      onAnimationEnd={(e) => e.animationName === "warp-streak" && setStreak(false)}
+    >
       <button className="dock__strip" onClick={() => setOpen(!open)} aria-expanded={open}>
         <span>{open ? "▾" : "▴"}</span>
         <span className="dock__microbar" aria-hidden>
