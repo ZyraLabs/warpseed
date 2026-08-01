@@ -8,3 +8,6 @@ frontend/node_modules/
 *.db-wal
 *.db-shm
 .env
+
+# wails local build cache
+frontend/package.json.md5
