@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import CommandPalette from "./components/CommandPalette";
 import FilePane from "./components/FilePane";
 import HostKeyDialog from "./components/HostKeyDialog";
+import QueueDock from "./components/QueueDock";
 import QuickConnect from "./components/QuickConnect";
 import Toasts from "./components/Toasts";
 import { localHome, on, schemaVersion, sites as fetchSites, type ConnState } from "./ipc";
@@ -79,6 +80,8 @@ export default function App() {
         <FilePane side={0} />
         <FilePane side={1} />
       </main>
+
+      <QueueDock />
 
       <footer className="app__statusbar">
         <span>

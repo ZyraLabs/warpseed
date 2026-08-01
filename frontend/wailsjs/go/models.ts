@@ -130,6 +130,25 @@ export namespace localfs {
 
 }
 
+export namespace main {
+	
+	export class DownloadItem {
+	    src: string;
+	    size: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new DownloadItem(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.src = source["src"];
+	        this.size = source["size"];
+	    }
+	}
+
+}
+
 export namespace queue {
 	
 	export class Site {
@@ -158,6 +177,46 @@ export namespace queue {
 	        this.username = source["username"];
 	        this.credRef = source["credRef"];
 	        this.optionsJson = source["optionsJson"];
+	        this.createdAt = source["createdAt"];
+	        this.updatedAt = source["updatedAt"];
+	    }
+	}
+	export class Transfer {
+	    id: number;
+	    siteId: number;
+	    engine: string;
+	    direction: string;
+	    src: string;
+	    dst: string;
+	    size: number;
+	    state: string;
+	    priority: number;
+	    bytesDone: number;
+	    attempt: number;
+	    nextRetryAt?: string;
+	    error?: string;
+	    createdAt: string;
+	    updatedAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Transfer(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.siteId = source["siteId"];
+	        this.engine = source["engine"];
+	        this.direction = source["direction"];
+	        this.src = source["src"];
+	        this.dst = source["dst"];
+	        this.size = source["size"];
+	        this.state = source["state"];
+	        this.priority = source["priority"];
+	        this.bytesDone = source["bytesDone"];
+	        this.attempt = source["attempt"];
+	        this.nextRetryAt = source["nextRetryAt"];
+	        this.error = source["error"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }

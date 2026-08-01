@@ -4,6 +4,21 @@ import { useUiStore, type PaneSide } from "../store";
 
 const SKELETON_DELAY_MS = 150; // ux-spec §7.12: no skeleton on fast listings
 
+// Stale-while-revalidate listing cache (web patterns rule): revisited
+// directories render instantly from cache while a fresh listing loads —
+// the main perceived-speed fix for high-RTT remote browsing.
+const listingCache = new Map<string, Listing>();
+const CACHE_MAX = 300;
+
+function cachePut(key: string, l: Listing) {
+  if (listingCache.size >= CACHE_MAX) {
+    const oldest = listingCache.keys().next().value;
+    if (oldest !== undefined) listingCache.delete(oldest);
+  }
+  listingCache.delete(key);
+  listingCache.set(key, l);
+}
+
 interface PaneNav {
   listing: Listing | null;
   error: string | null;
@@ -39,13 +54,22 @@ export function usePaneNav(side: PaneSide): PaneNav {
   useEffect(() => {
     if (!path) return;
     let stale = false;
-    const skeleton = setTimeout(() => !stale && setLoading(true), SKELETON_DELAY_MS);
+    const key = `${String(source)}|${path}`;
+    const cached = listingCache.get(key);
+    if (cached) {
+      // SWR: show the cached listing immediately, refresh in background.
+      setListing(cached);
+      setError(null);
+    }
+    const skeleton = setTimeout(() => !stale && !cached && setLoading(true), SKELETON_DELAY_MS);
 
     list(source, path)
       .then((l) => {
         if (stale) return;
         setListing(l);
         setError(null);
+        cachePut(key, l);
+        cachePut(`${String(source)}|${l.path}`, l);
         const h = hist.current;
         if (traveling.current) {
           traveling.current = false;

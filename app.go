@@ -5,10 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"path"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"warpseed/internal/creds"
+	"warpseed/internal/dispatch"
 	"warpseed/internal/engine/core"
 	"warpseed/internal/engine/sftpfast"
 	"warpseed/internal/events"
@@ -21,12 +24,13 @@ import (
 // (with internal/events) the only layer that touches the Wails API surface.
 // Methods stay thin — they delegate to internal packages.
 type App struct {
-	ctx      context.Context
-	sink     events.Sink
-	broker   *events.Broker
-	store    *queue.Store
-	creds    creds.Store
-	hostkeys *hostkeys.Store
+	ctx        context.Context
+	sink       events.Sink
+	broker     *events.Broker
+	store      *queue.Store
+	creds      creds.Store
+	hostkeys   *hostkeys.Store
+	dispatcher *dispatch.Dispatcher
 
 	mu       sync.Mutex
 	sessions map[int64]*sftpfast.Client // browse connection per connected site
@@ -66,6 +70,31 @@ func (a *App) startup(ctx context.Context) {
 	} else if n > 0 {
 		log.Printf("queue: requeued %d interrupted transfer(s)", n)
 	}
+
+	a.dispatcher = dispatch.New(store, a.sink, a.dialTransfer)
+	go a.dispatcher.Run(ctx)
+}
+
+// dialTransfer opens a dedicated data connection for one transfer. Unknown
+// host keys are DENIED here (nil prompt): pins are established by the
+// interactive browse connect, so the queue can never silently trust a host.
+func (a *App) dialTransfer(ctx context.Context, siteID int64) (*sftpfast.Client, error) {
+	site, err := a.store.SiteByID(siteID)
+	if err != nil {
+		return nil, err
+	}
+	password := ""
+	if site.CredRef != "" {
+		if p, err := a.creds.Get(site.CredRef); err == nil {
+			password = p
+		}
+	}
+	return sftpfast.Dial(ctx, sftpfast.Config{
+		Host:     site.Host,
+		Port:     site.Port,
+		User:     site.Username,
+		Password: password,
+	}, a.hostkeys.Callback(siteID, nil))
 }
 
 func (a *App) shutdown(_ context.Context) {
@@ -247,11 +276,81 @@ func (a *App) ListRemote(id int64, path string) (core.Listing, error) {
 	return client.List(path)
 }
 
+// RemoteHome resolves the SFTP session's home directory.
+func (a *App) RemoteHome(id int64) (string, error) {
+	a.mu.Lock()
+	client, ok := a.sessions[id]
+	a.mu.Unlock()
+	if !ok {
+		return "", fmt.Errorf("site %d is not connected", id)
+	}
+	return client.Home()
+}
+
 // ResolvePrompt answers a blocking engine prompt (host key, overwrite...).
 func (a *App) ResolvePrompt(promptID string, answer bool) {
 	if a.broker != nil {
 		a.broker.Resolve(promptID, answer)
 	}
+}
+
+// --- Transfer bindings ---
+
+// DownloadItem is one remote file selected for download.
+type DownloadItem struct {
+	Src  string `json:"src"`
+	Size int64  `json:"size"`
+}
+
+// EnqueueDownloads queues remote files for download into localDir and wakes
+// the dispatcher. Returns the new transfer ids.
+func (a *App) EnqueueDownloads(siteID int64, items []DownloadItem, localDir string) ([]int64, error) {
+	if a.store == nil {
+		return nil, errNoStore
+	}
+	ids := make([]int64, 0, len(items))
+	for _, it := range items {
+		id, err := a.store.EnqueueTransfer(queue.Transfer{
+			SiteID: siteID,
+			Src:    it.Src,
+			Dst:    filepath.Join(localDir, path.Base(it.Src)),
+			Size:   it.Size,
+		})
+		if err != nil {
+			return ids, err
+		}
+		ids = append(ids, id)
+	}
+	a.sink.Emit("queue:changed", nil)
+	a.dispatcher.Wake()
+	return ids, nil
+}
+
+// TransfersList returns the newest queue rows for the dock.
+func (a *App) TransfersList() ([]queue.Transfer, error) {
+	if a.store == nil {
+		return nil, errNoStore
+	}
+	return a.store.Transfers(200)
+}
+
+// PauseTransfer stops a transfer keeping its .wspart for byte-resume.
+func (a *App) PauseTransfer(id int64) error { return a.dispatcher.Pause(id) }
+
+// ResumeTransfer requeues a paused or failed transfer.
+func (a *App) ResumeTransfer(id int64) error { return a.dispatcher.Resume(id) }
+
+// CancelTransfer aborts a transfer.
+func (a *App) CancelTransfer(id int64) error { return a.dispatcher.Cancel(id) }
+
+// ClearDoneTransfers removes completed and cancelled rows.
+func (a *App) ClearDoneTransfers() error {
+	if a.store == nil {
+		return errNoStore
+	}
+	_, err := a.store.ClearFinished()
+	a.sink.Emit("queue:changed", nil)
+	return err
 }
 
 func (a *App) emitConnState(siteID int64, state string) {

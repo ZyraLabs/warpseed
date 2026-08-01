@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { connectSite, disconnectSite, localHome } from "../ipc";
+import { connectAndHome, disconnectSite, localHome } from "../ipc";
 import { useUiStore } from "../store";
 import type { PaneCmd } from "./FilePane";
 
@@ -62,8 +62,8 @@ export default function CommandPalette() {
         hint: `${s.username}@${s.host}`,
         run: close(async () => {
           try {
-            await connectSite(s.id);
-            setPane(active, s.id, "/");
+            const home = await connectAndHome(s.id);
+            setPane(active, s.id, home);
           } catch (err) {
             window.dispatchEvent(
               new CustomEvent("ws:toast", { detail: { kind: "error", text: String(err) } }),

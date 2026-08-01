@@ -152,6 +152,16 @@ func (c *Client) List(remotePath string) (core.Listing, error) {
 	return core.Listing{Path: clean, Parent: parent, Entries: entries}, nil
 }
 
+// Home resolves the session's initial directory (the SFTP server's idea of
+// "."), so remote panes open where the user lands, not at "/".
+func (c *Client) Home() (string, error) {
+	home, err := c.sftp.RealPath(".")
+	if err != nil {
+		return "", fmt.Errorf("resolve remote home: %w", err)
+	}
+	return home, nil
+}
+
 // newFromSFTP lets tests drive the engine over an in-process pipe pair
 // without SSH.
 func newFromSFTP(sc *sftp.Client) *Client {

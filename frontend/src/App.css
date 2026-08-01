@@ -1,9 +1,10 @@
 @import "./pane.css";
 @import "./overlays.css";
+@import "./queue.css";
 
 .app {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   height: 100vh;
   background: var(--surface-0);
 }

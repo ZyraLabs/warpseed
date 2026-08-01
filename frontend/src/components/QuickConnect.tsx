@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  connectSite,
+  connectAndHome,
   deleteSite,
   saveSite,
   sites as fetchSites,
@@ -39,8 +39,8 @@ export default function QuickConnect() {
     setBusy(true);
     setError("");
     try {
-      await connectSite(s.id);
-      setPane(side, s.id, "/");
+      const home = await connectAndHome(s.id);
+      setPane(side, s.id, home);
       close();
     } catch (err) {
       setError(String(err));
@@ -64,8 +64,8 @@ export default function QuickConnect() {
         form.password,
       );
       setSites(await fetchSites());
-      await connectSite(saved.id);
-      setPane(side, saved.id, "/");
+      const home = await connectAndHome(saved.id);
+      setPane(side, saved.id, home);
       close();
     } catch (err) {
       setError(String(err));

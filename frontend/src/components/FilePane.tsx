@@ -1,10 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { usePaneNav } from "../hooks/usePaneNav";
-import { connectSite, localHome, type FsEntry } from "../ipc";
+import { connectAndHome, enqueueDownloads, localHome, type FsEntry } from "../ipc";
 import { formatSize, formatTime } from "../lib/format";
 import { useUiStore, type PaneSide } from "../store";
 import Breadcrumb from "./Breadcrumb";
+import DirTree from "./DirTree";
+
+function toast(kind: "info" | "error" | "success", text: string) {
+  window.dispatchEvent(new CustomEvent("ws:toast", { detail: { kind, text } }));
+}
 
 export interface PaneCmd {
   side: PaneSide;
@@ -37,6 +42,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const [marks, setMarks] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<string | null>(null);
   const [editReq, setEditReq] = useState(0);
+  const [treeOpen, setTreeOpen] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -74,6 +80,42 @@ export default function FilePane({ side }: { side: PaneSide }) {
     [virtualizer],
   );
 
+  // enqueueItems queues remote files for download into the OTHER pane's
+  // local directory (commander F5 semantics).
+  const enqueueItems = useCallback(
+    async (items: FsEntry[]) => {
+      if (typeof source !== "number" || !nav.listing) return;
+      const other = useUiStore.getState().panes[side === 0 ? 1 : 0];
+      if (other.source !== "local") {
+        toast("error", "The other pane must be This PC to receive downloads");
+        return;
+      }
+      const files = items.filter((e) => !e.isDir);
+      const skippedDirs = items.length - files.length;
+      if (files.length === 0) {
+        toast("error", skippedDirs > 0 ? "Folder downloads arrive next increment" : "Nothing selected to transfer");
+        return;
+      }
+      const base = nav.listing.path.endsWith("/") ? nav.listing.path : nav.listing.path + "/";
+      try {
+        await enqueueDownloads(
+          source,
+          files.map((e) => ({ src: base + e.name, size: e.size })),
+          other.path,
+        );
+        useUiStore.getState().setQueueOpen(true);
+        toast(
+          "success",
+          `Queued ${files.length} download${files.length > 1 ? "s" : ""}` +
+            (skippedDirs ? ` · ${skippedDirs} folder(s) skipped` : ""),
+        );
+      } catch (err) {
+        toast("error", String(err));
+      }
+    },
+    [source, side, nav.listing],
+  );
+
   const open = useCallback(
     (e: FsEntry) => {
       if (!nav.listing) return;
@@ -81,10 +123,13 @@ export default function FilePane({ side }: { side: PaneSide }) {
         const sep = nav.listing.path.includes("\\") ? "\\" : "/";
         const base = nav.listing.path.endsWith(sep) ? nav.listing.path : nav.listing.path + sep;
         nav.navigate(base + e.name);
+      } else if (typeof source === "number") {
+        void enqueueItems([e]); // double-click a remote file = download it
+      } else {
+        toast("info", "Uploads arrive next increment — F5 in a remote pane downloads today");
       }
-      // files: F5 transfer semantics arrive with the queue dispatcher
     },
-    [nav],
+    [nav, source, enqueueItems],
   );
 
   const toggleMark = useCallback((name: string) => {
@@ -141,11 +186,20 @@ export default function FilePane({ side }: { side: PaneSide }) {
       } else if (e.altKey && e.key === "ArrowUp" && !inField) {
         e.preventDefault();
         nav.up();
+      } else if (e.key === "F5") {
+        e.preventDefault(); // F5 transfers — never reloads the webview
+        const sel = marks.size
+          ? entries.filter((x) => marks.has(x.name))
+          : entries[cursor]
+            ? [entries[cursor]]
+            : [];
+        if (typeof source === "number") void enqueueItems(sel);
+        else toast("info", "Uploads arrive next increment — F5 in a remote pane downloads");
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isActive, nav]);
+  }, [isActive, nav, marks, entries, cursor, source, enqueueItems]);
 
   const onListKeyDown = (ev: React.KeyboardEvent) => {
     if (!entries.length && !["Backspace"].includes(ev.key)) return;
@@ -218,8 +272,8 @@ export default function FilePane({ side }: { side: PaneSide }) {
     } else {
       const id = Number(value);
       try {
-        await connectSite(id);
-        setPane(side, id, "/");
+        const home = await connectAndHome(id);
+        setPane(side, id, home);
       } catch (err) {
         window.dispatchEvent(
           new CustomEvent("ws:toast", { detail: { kind: "error", text: String(err) } }),
@@ -235,6 +289,14 @@ export default function FilePane({ side }: { side: PaneSide }) {
       aria-label={`File pane ${side + 1}`}
     >
       <header className="pane__bar">
+        <button
+          className={`pane__btn ${treeOpen ? "pane__btn--on" : ""}`}
+          onClick={() => setTreeOpen(!treeOpen)}
+          title="Folder tree"
+          aria-pressed={treeOpen}
+        >
+          ≡
+        </button>
         <select
           className="pane__source"
           value={typeof source === "number" ? String(source) : "local"}
@@ -300,6 +362,15 @@ export default function FilePane({ side }: { side: PaneSide }) {
         </div>
       )}
 
+      <div className="pane__body">
+        {treeOpen && (
+          <DirTree
+            source={source}
+            currentPath={nav.listing?.path ?? path}
+            onNavigate={nav.navigate}
+          />
+        )}
+        <div className="pane__content">
       {nav.error ? (
         <div>
           <div className="pane__error" role="alert">
@@ -363,6 +434,8 @@ export default function FilePane({ side }: { side: PaneSide }) {
           </div>
         </div>
       )}
+        </div>
+      </div>
 
       <footer className="pane__status">
         <span>{all.length} items</span>
