@@ -1,0 +1,34 @@
+/* warpseed design tokens — instrument-panel dark, chosen deliberately for
+   long-running transfer sessions. One accent; semantic colors reserved for
+   transfer states (Phase 1). */
+:root {
+  /* surfaces: layered, not flat */
+  --surface-0: oklch(17% 0.012 260);   /* app background */
+  --surface-1: oklch(21% 0.014 260);   /* panes */
+  --surface-2: oklch(25% 0.016 260);   /* headers, path bars */
+  --surface-3: oklch(30% 0.02 260);    /* hover */
+
+  --text: oklch(88% 0.01 250);
+  --text-dim: oklch(62% 0.015 250);
+  --text-faint: oklch(45% 0.012 250);
+
+  --accent: oklch(78% 0.14 190);       /* warp teal — interactive + active pane */
+  --accent-dim: oklch(60% 0.10 190);
+  --danger: oklch(65% 0.19 25);
+
+  --border: oklch(30% 0.015 260);
+  --border-strong: oklch(38% 0.02 260);
+
+  --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
+  --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --text-xs: 0.72rem;
+  --text-sm: 0.8rem;
+  --text-md: 0.9rem;
+
+  --row-h: 26px;
+  --radius: 6px;
+
+  --duration-fast: 120ms;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
