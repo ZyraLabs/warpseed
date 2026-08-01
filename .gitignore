@@ -1,0 +1,10 @@
+build/bin/
+frontend/dist/
+frontend/node_modules/
+*.exe
+*.syso
+.task/
+*.db
+*.db-wal
+*.db-shm
+.env
