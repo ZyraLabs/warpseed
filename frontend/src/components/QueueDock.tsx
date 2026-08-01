@@ -52,7 +52,7 @@ export default function QueueDock() {
     refresh();
     const offChanged = on("queue:changed", refresh);
     const offProgress = on<TransferProgress>("transfer:progress", (p) =>
-      applyProgress(p.id, p.bytes, p.size),
+      applyProgress(p.id, p.bytes, p.size, p.chunks),
     );
     const offState = on<TransferState>("transfer:state", (s) => {
       patchTransferState(s.id, s.state, s.error);
@@ -68,7 +68,15 @@ export default function QueueDock() {
   const live = transfers.map((t) => {
     const p = progress[t.id];
     const bytes = p && p.bytes > t.bytesDone ? p.bytes : t.bytesDone;
-    return { ...t, bytes, rate: t.state === "active" ? p?.rate ?? 0 : 0 };
+    // Lanes belong to a running multi-connection transfer; once it settles,
+    // fall back to the single bar so the row reads as done/paused/failed.
+    const showLanes = t.state === "active" || t.state === "paused";
+    return {
+      ...t,
+      bytes,
+      rate: t.state === "active" ? p?.rate ?? 0 : 0,
+      chunks: showLanes ? p?.chunks : undefined,
+    };
   });
 
   const active = live.filter((t) => t.state === "active");
@@ -122,9 +130,25 @@ export default function QueueDock() {
                   <span className="trow__route" title={`${t.src} → ${t.dst}`}>
                     {siteName} → {t.dst}
                   </span>
-                  <span className="trow__bar" aria-hidden>
-                    <div style={{ transform: `scaleX(${pct})` }} />
-                  </span>
+                  {/* Hyperlane bar: one sub-track per connection when a file
+                      is split across several — the engine made visible. */}
+                  {t.chunks && t.chunks.length > 1 ? (
+                    <span
+                      className="trow__bar trow__bar--hyper"
+                      aria-hidden
+                      title={`${t.chunks.length} parallel connections`}
+                    >
+                      {t.chunks.map((f, i) => (
+                        <span key={i} className="hyper__lane">
+                          <span style={{ transform: `scaleX(${Math.min(Math.max(f, 0), 1)})` }} />
+                        </span>
+                      ))}
+                    </span>
+                  ) : (
+                    <span className="trow__bar" aria-hidden>
+                      <div style={{ transform: `scaleX(${pct})` }} />
+                    </span>
+                  )}
                   <span className="trow__pct">
                     {t.size > 0 ? `${Math.floor(pct * 100)}%` : formatSize(t.bytes)}
                   </span>

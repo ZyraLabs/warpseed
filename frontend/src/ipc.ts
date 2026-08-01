@@ -134,6 +134,8 @@ export interface TransferProgress {
   id: number;
   bytes: number;
   size: number;
+  /** Per-chunk completion fractions for multi-connection transfers. */
+  chunks?: number[];
 }
 
 export interface TransferState {

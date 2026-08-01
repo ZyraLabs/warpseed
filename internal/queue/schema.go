@@ -78,4 +78,20 @@ var migrations = []string{
 		('bw.observed_max','0'),
 		('ui.theme','dark');
 	`,
+
+	// 003 — multi-connection chunked downloads: a single large file spans
+	// several connections to beat a server's per-connection speed cap.
+	`
+	INSERT OR IGNORE INTO settings(key,value) VALUES
+		('transfers.chunk_min_mb','256'),
+		('transfers.chunk_streams','4');
+	`,
+
+	// 004 — record the source mtime a chunk plan was built against so a
+	// resume can detect a file that changed on the server, and raise the
+	// per-site default so the shipped chunk stream count is achievable.
+	`
+	ALTER TABLE transfers ADD COLUMN src_mtime INTEGER NOT NULL DEFAULT 0;
+	UPDATE settings SET value='6' WHERE key='transfers.site_max' AND value='3';
+	`,
 }

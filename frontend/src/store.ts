@@ -8,6 +8,7 @@ interface ProgressSample {
   bytes: number;
   at: number; // ms timestamp of last sample
   rate: number; // EMA bytes/sec
+  chunks?: number[]; // per-connection completion fractions
 }
 
 export type PaneSide = 0 | 1;
@@ -39,7 +40,7 @@ interface UiState {
   setPaletteOpen: (open: boolean) => void;
   setQuickConnect: (open: boolean, side?: PaneSide) => void;
   setTransfers: (t: Transfer[]) => void;
-  applyProgress: (id: number, bytes: number, size: number) => void;
+  applyProgress: (id: number, bytes: number, size: number, chunks?: number[]) => void;
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
@@ -82,7 +83,7 @@ export const useUiStore = create<UiState>((set) => ({
   setQuickConnect: (open, side) =>
     set((s) => ({ quickConnect: { open, side: side ?? s.quickConnect.side } })),
   setTransfers: (transfers) => set({ transfers }),
-  applyProgress: (id, bytes) =>
+  applyProgress: (id, bytes, _size, chunks) =>
     set((s) => {
       const now = performance.now();
       const prev = s.progress[id];
@@ -91,7 +92,9 @@ export const useUiStore = create<UiState>((set) => ({
         const inst = ((bytes - prev.bytes) * 1000) / (now - prev.at);
         rate = prev.rate === 0 ? inst : prev.rate * 0.7 + inst * 0.3; // EMA smoothing
       }
-      return { progress: { ...s.progress, [id]: { bytes, at: now, rate } } };
+      return {
+        progress: { ...s.progress, [id]: { bytes, at: now, rate, chunks: chunks ?? prev?.chunks } },
+      };
     }),
   patchTransferState: (id, state, error) =>
     set((s) => ({

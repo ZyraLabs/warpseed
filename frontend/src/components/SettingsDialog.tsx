@@ -176,6 +176,31 @@ export default function SettingsDialog() {
               onChange={(e) => put("transfers.site_max", e.target.value)}
             />
           </div>
+          <div className="set-row">
+            <label>Split big files across</label>
+            <span className="set-inline">
+              <input
+                type="number"
+                min={1}
+                max={16}
+                value={cfg["transfers.chunk_streams"] ?? "4"}
+                onChange={(e) => put("transfers.chunk_streams", e.target.value)}
+              />
+              <span className="set-note">connections (1 = off)</span>
+            </span>
+          </div>
+          <div className="set-row">
+            <label>…when larger than</label>
+            <span className="set-inline">
+              <input
+                type="number"
+                min={0}
+                value={cfg["transfers.chunk_min_mb"] ?? "256"}
+                onChange={(e) => put("transfers.chunk_min_mb", e.target.value)}
+              />
+              <span className="set-note">MB — beats a per-connection speed cap</span>
+            </span>
+          </div>
         </section>
 
         <section className="set-section">

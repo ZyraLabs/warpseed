@@ -22,21 +22,33 @@ type Transfer struct {
 	Attempt     int     `json:"attempt"`
 	NextRetryAt *string `json:"nextRetryAt"`
 	Error       *string `json:"error"`
-	CreatedAt   string  `json:"createdAt"`
-	UpdatedAt   string  `json:"updatedAt"`
+	// SrcMtime is the source modification time a chunk plan was built
+	// against; a mismatch on resume means the file changed under us.
+	SrcMtime  int64  `json:"srcMtime"`
+	CreatedAt string `json:"createdAt"`
+	UpdatedAt string `json:"updatedAt"`
 }
 
 var ErrTransferNotFound = errors.New("transfer not found")
 
 const transferCols = `id,site_id,engine,direction,src,dst,size,state,priority,
-	bytes_done,attempt,next_retry_at,error,created_at,updated_at`
+	bytes_done,attempt,next_retry_at,error,src_mtime,created_at,updated_at`
 
 func scanTransfer(row interface{ Scan(...any) error }) (Transfer, error) {
 	var t Transfer
 	err := row.Scan(&t.ID, &t.SiteID, &t.Engine, &t.Direction, &t.Src, &t.Dst,
 		&t.Size, &t.State, &t.Priority, &t.BytesDone, &t.Attempt,
-		&t.NextRetryAt, &t.Error, &t.CreatedAt, &t.UpdatedAt)
+		&t.NextRetryAt, &t.Error, &t.SrcMtime, &t.CreatedAt, &t.UpdatedAt)
 	return t, err
+}
+
+// SetTransferSrcMtime records the source mtime a chunk plan was built for.
+func (s *Store) SetTransferSrcMtime(id, mtime int64) error {
+	_, err := s.db.Exec(`UPDATE transfers SET src_mtime=? WHERE id=?`, mtime, id)
+	if err != nil {
+		return fmt.Errorf("set src mtime: %w", err)
+	}
+	return nil
 }
 
 // EnqueueTransfer inserts a pending row and returns its id.

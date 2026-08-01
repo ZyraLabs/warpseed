@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"math/rand/v2"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -74,14 +75,19 @@ func (a *App) startup(ctx context.Context) {
 		log.Printf("queue: requeued %d interrupted transfer(s)", n)
 	}
 
-	a.dispatcher = dispatch.New(store, a.sink, a.dialTransfer)
+	a.dispatcher = dispatch.New(store, a.sink, a.dialTransfers)
 	go a.dispatcher.Run(ctx)
 }
 
-// dialTransfer opens a dedicated data connection for one transfer. Unknown
-// host keys are DENIED here (nil prompt): pins are established by the
-// interactive browse connect, so the queue can never silently trust a host.
-func (a *App) dialTransfer(ctx context.Context, siteID int64) (*sftpfast.Client, error) {
+// dialTransfers opens n dedicated data connections for one transfer.
+// Unknown host keys are DENIED here (nil prompt): pins are established by
+// the interactive browse connect, so the queue can never silently trust a
+// host. Dials are staggered — a burst of parallel connections trips
+// OpenSSH's MaxStartups and gets dropped probabilistically.
+func (a *App) dialTransfers(ctx context.Context, siteID int64, n int) ([]*sftpfast.Client, error) {
+	if n < 1 {
+		n = 1
+	}
 	site, err := a.store.SiteByID(siteID)
 	if err != nil {
 		return nil, err
@@ -92,12 +98,45 @@ func (a *App) dialTransfer(ctx context.Context, siteID int64) (*sftpfast.Client,
 			password = p
 		}
 	}
-	return sftpfast.Dial(ctx, sftpfast.Config{
+	cfg := sftpfast.Config{
 		Host:     site.Host,
 		Port:     site.Port,
 		User:     site.Username,
 		Password: password,
-	}, a.hostkeys.Callback(siteID, nil))
+	}
+	hostKey := a.hostkeys.Callback(siteID, nil)
+
+	clients := make([]*sftpfast.Client, 0, n)
+	for i := 0; i < n; i++ {
+		if i > 0 {
+			// 150–400ms jitter between dials.
+			delay := time.Duration(150+rand.IntN(250)) * time.Millisecond
+			select {
+			case <-ctx.Done():
+				closeAll(clients)
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+		c, derr := sftpfast.Dial(ctx, cfg, hostKey)
+		if derr != nil {
+			// The first connection is mandatory; refusals beyond it just
+			// mean the server won't grant more, so run with what we have.
+			if i == 0 {
+				return nil, derr
+			}
+			log.Printf("dispatch: site %d granted %d/%d connections: %v", siteID, i, n, derr)
+			break
+		}
+		clients = append(clients, c)
+	}
+	return clients, nil
+}
+
+func closeAll(clients []*sftpfast.Client) {
+	for _, c := range clients {
+		c.Close()
+	}
 }
 
 func (a *App) shutdown(_ context.Context) {
@@ -583,12 +622,14 @@ func (a *App) ClearDoneTransfers() error {
 // values it may write: a persisted 0 concurrency would stall the queue
 // forever, so bad values are rejected at the boundary, not absorbed.
 var settingValidators = map[string]func(string) error{
-	"transfers.global_max": intRange(1, 16),
-	"transfers.site_max":   intRange(1, 8),
-	"bw.limit_bytes":       intRange(0, 1<<40),
-	"bw.percent":           intRange(10, 95),
-	"bw.mode":              oneOf("off", "fixed", "percent"),
-	"ui.theme":             oneOf("dark", "light", "system"),
+	"transfers.global_max":    intRange(1, 16),
+	"transfers.site_max":      intRange(1, 8),
+	"bw.limit_bytes":          intRange(0, 1<<40),
+	"bw.percent":              intRange(10, 95),
+	"bw.mode":                 oneOf("off", "fixed", "percent"),
+	"ui.theme":                oneOf("dark", "light", "system"),
+	"transfers.chunk_min_mb":  intRange(0, 1<<20), // 0 disables chunking
+	"transfers.chunk_streams": intRange(1, 16),
 }
 
 func intRange(lo, hi int) func(string) error {

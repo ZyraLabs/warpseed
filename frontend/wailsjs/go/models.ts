@@ -217,6 +217,7 @@ export namespace queue {
 	    attempt: number;
 	    nextRetryAt?: string;
 	    error?: string;
+	    srcMtime: number;
 	    createdAt: string;
 	    updatedAt: string;
 	
@@ -239,6 +240,7 @@ export namespace queue {
 	        this.attempt = source["attempt"];
 	        this.nextRetryAt = source["nextRetryAt"];
 	        this.error = source["error"];
+	        this.srcMtime = source["srcMtime"];
 	        this.createdAt = source["createdAt"];
 	        this.updatedAt = source["updatedAt"];
 	    }

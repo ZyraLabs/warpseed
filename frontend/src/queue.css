@@ -220,6 +220,48 @@
 .trow--completed .trow__bar > div {
   background: var(--state-done);
 }
+/* hyperlane bar — ux-spec §8.1: parallel sub-tracks, one per connection,
+   each filling independently. No other client can draw this. */
+.trow__bar--hyper {
+  display: flex;
+  gap: 1px;
+  background: none;
+  overflow: visible;
+}
+.hyper__lane {
+  flex: 1;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--surface-0);
+  overflow: hidden;
+}
+.hyper__lane > span {
+  display: block;
+  height: 100%;
+  background: var(--state-active);
+  transform-origin: left;
+  transform: scaleX(0);
+  transition: transform 250ms linear;
+}
+.trow--paused .hyper__lane > span {
+  background: var(--state-paused);
+}
+.trow--failed .hyper__lane > span {
+  background: var(--state-error);
+}
+.hyper__lane:nth-child(2) > span {
+  opacity: 0.8;
+}
+.hyper__lane:nth-child(3) > span {
+  opacity: 0.65;
+}
+.hyper__lane:nth-child(4) > span {
+  opacity: 0.55;
+}
+.hyper__lane:nth-child(n + 5) > span {
+  opacity: 0.45;
+}
+
 .trow__pct,
 .trow__rate {
   text-align: right;
