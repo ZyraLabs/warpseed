@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"time"
 )
 
 // chunkBuffer is the read size per request batch. Large enough that
@@ -22,8 +23,13 @@ const chunkBuffer = 4 << 20
 // publish a file full of holes.
 const ChunkPartSuffix = ".wschunk"
 
-// checkpointEvery bounds how much work an ungraceful kill can discard.
-const checkpointEvery = 8 << 20
+// checkpointEvery and checkpointInterval bound how much work an ungraceful
+// kill can discard — whichever comes first, so a slow link still records
+// progress regularly.
+const (
+	checkpointEvery    = 8 << 20
+	checkpointInterval = 30 * time.Second
+)
 
 // ErrChunkStateLost means the recorded per-chunk offsets no longer describe
 // the file on disk (it was deleted, truncated, or replaced). The caller must
@@ -180,13 +186,6 @@ func DownloadChunks(
 					fail(err)
 					return
 				}
-				// Durability: each completed range is flushed before it counts
-				// as done, so a crash can never leave a checkpoint claiming
-				// bytes the OS had not yet written.
-				if serr := lf.Sync(); serr != nil {
-					fail(fmt.Errorf("sync chunk %d: %w", r.Idx, serr))
-					return
-				}
 			}
 		}(client)
 	}
@@ -228,10 +227,27 @@ func fetchRange(
 	end := r.Offset + r.Length
 	done := r.Done
 	sinceCheckpoint := int64(0)
+	lastCheckpoint := time.Now()
+
+	// Durability ordering, non-negotiable: bytes hit the disk, THEN the
+	// checkpoint records them. A checkpoint that runs first can claim bytes
+	// a crash never flushed, and the resume would skip them — leaving a hole
+	// no size check can see.
+	commit := func() error {
+		if err := lf.Sync(); err != nil {
+			return fmt.Errorf("sync chunk %d: %w", r.Idx, err)
+		}
+		checkpoint(r.Idx, done)
+		sinceCheckpoint = 0
+		lastCheckpoint = time.Now()
+		return nil
+	}
 
 	for pos < end {
 		if err := ctx.Err(); err != nil {
-			checkpoint(r.Idx, done)
+			if cerr := commit(); cerr != nil {
+				return cerr
+			}
 			return fmt.Errorf("chunk %d cancelled: %w", r.Idx, err)
 		}
 		want := int64(len(buf))
@@ -251,15 +267,12 @@ func fetchRange(
 			sinceCheckpoint += int64(n)
 			progress(r.Idx, int64(n))
 			// Checkpoint mid-range so an ungraceful kill costs at most this
-			// much rework, not the whole range.
-			if sinceCheckpoint >= checkpointEvery {
-				sinceCheckpoint = 0
-				if syncer, ok := lf.(interface{ Sync() error }); ok {
-					if serr := syncer.Sync(); serr != nil {
-						return fmt.Errorf("sync chunk %d: %w", r.Idx, serr)
-					}
+			// much rework. The time bound matters on a throttled or slow
+			// link, where the byte bound alone could be minutes away.
+			if sinceCheckpoint >= checkpointEvery || time.Since(lastCheckpoint) >= checkpointInterval {
+				if cerr := commit(); cerr != nil {
+					return cerr
 				}
-				checkpoint(r.Idx, done)
 			}
 		}
 		if rerr != nil {
@@ -267,12 +280,13 @@ func fetchRange(
 			if errors.Is(rerr, io.EOF) && pos >= end {
 				break
 			}
-			checkpoint(r.Idx, done)
+			if cerr := commit(); cerr != nil {
+				return cerr
+			}
 			return fmt.Errorf("read chunk %d at %d: %w", r.Idx, pos, rerr)
 		}
 	}
-	checkpoint(r.Idx, done)
-	return nil
+	return commit()
 }
 
 // finalizeChunked flushes and publishes the assembled file. Ranges are
@@ -302,6 +316,13 @@ func finalizeChunked(part, localPath string, size int64) error {
 	}
 	if err := os.Rename(part, localPath); err != nil {
 		return fmt.Errorf("finalize %q: %w", localPath, err)
+	}
+	// Persist the rename itself: without a directory fsync, a crash can
+	// leave the file under neither name. (No-op on Windows, where opening a
+	// directory for sync isn't supported — the rename is already durable.)
+	if dir, derr := os.Open(filepath.Dir(localPath)); derr == nil {
+		_ = dir.Sync()
+		dir.Close()
 	}
 	return nil
 }

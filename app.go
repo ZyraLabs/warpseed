@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
-	"math/rand/v2"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -108,20 +107,30 @@ func (a *App) dialTransfers(ctx context.Context, siteID int64, n int) ([]*sftpfa
 
 	clients := make([]*sftpfast.Client, 0, n)
 	for i := 0; i < n; i++ {
+		// Cancellation is checked BETWEEN dials only. Aborting a connection
+		// that is open but has not yet authenticated is exactly what
+		// OpenSSH's PerSourcePenalties (on by default since 9.8) punishes —
+		// enough of them and the server refuses this IP for minutes.
+		if ctx.Err() != nil {
+			break
+		}
 		if i > 0 {
-			// 150–400ms jitter between dials.
-			delay := time.Duration(150+rand.IntN(250)) * time.Millisecond
-			select {
-			case <-ctx.Done():
-				closeAll(clients)
-				return nil, ctx.Err()
-			case <-time.After(delay):
+			time.Sleep(dialStagger)
+			if ctx.Err() != nil {
+				break
 			}
 		}
+
+		// Cap concurrent handshakes process-wide: the server's MaxStartups
+		// counter is global, and several transfers may be dialling at once.
+		dialGate <- struct{}{}
 		c, derr := sftpfast.Dial(ctx, cfg, hostKey)
+		<-dialGate
+
 		if derr != nil {
 			// The first connection is mandatory; refusals beyond it just
-			// mean the server won't grant more, so run with what we have.
+			// mean the server won't grant more, so run with what we have
+			// rather than retrying into a penalty.
 			if i == 0 {
 				return nil, derr
 			}
@@ -130,8 +139,20 @@ func (a *App) dialTransfers(ctx context.Context, siteID int64, n int) ([]*sftpfa
 		}
 		clients = append(clients, c)
 	}
+	if len(clients) == 0 {
+		return nil, ctx.Err()
+	}
 	return clients, nil
 }
+
+// dialGate bounds concurrent SSH handshakes across the whole app. OpenSSH's
+// MaxStartups counter is global (default 10 unauthenticated connections), so
+// tripping it drops connections server-side and can look like an attack to
+// fail2ban. 8 is mscp's published choice against the same default.
+var dialGate = make(chan struct{}, 8)
+
+// dialStagger spaces connection setups so a burst never reads as a scan.
+const dialStagger = 120 * time.Millisecond
 
 func closeAll(clients []*sftpfast.Client) {
 	for _, c := range clients {
