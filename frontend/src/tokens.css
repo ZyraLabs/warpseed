@@ -1,34 +1,73 @@
-/* warpseed design tokens — instrument-panel dark, chosen deliberately for
-   long-running transfer sessions. One accent; semantic colors reserved for
-   transfer states (Phase 1). */
+/* warpseed design tokens v2 — ux-spec §6. Instrument-panel dark (deliberate:
+   long transfer sessions, dense data). One accent; semantic colors reserved
+   for transfer states; loud red reserved for real alarms. */
 :root {
-  /* surfaces: layered, not flat */
-  --surface-0: oklch(17% 0.012 260);   /* app background */
-  --surface-1: oklch(21% 0.014 260);   /* panes */
-  --surface-2: oklch(25% 0.016 260);   /* headers, path bars */
-  --surface-3: oklch(30% 0.02 260);    /* hover */
+  /* surfaces — 5 layers, hue 260, chroma rises slightly with elevation */
+  --surface-0: oklch(16% 0.012 260);
+  --surface-1: oklch(20% 0.014 260);
+  --surface-2: oklch(24% 0.016 260);
+  --surface-3: oklch(29% 0.018 260);
+  --surface-4: oklch(34% 0.02 260);
 
-  --text: oklch(88% 0.01 250);
-  --text-dim: oklch(62% 0.015 250);
-  --text-faint: oklch(45% 0.012 250);
+  /* text tiers */
+  --text: oklch(90% 0.008 250);
+  --text-mid: oklch(74% 0.012 250);
+  --text-dim: oklch(62% 0.014 250);
+  --text-faint: oklch(46% 0.012 250);
 
-  --accent: oklch(78% 0.14 190);       /* warp teal — interactive + active pane */
-  --accent-dim: oklch(60% 0.10 190);
-  --danger: oklch(65% 0.19 25);
+  /* accent */
+  --accent: oklch(78% 0.14 190);
+  --accent-dim: oklch(60% 0.1 190);
+  --accent-glow: oklch(78% 0.14 190 / 0.18);
 
-  --border: oklch(30% 0.015 260);
-  --border-strong: oklch(38% 0.02 260);
+  /* semantic transfer states — never decorative */
+  --state-active: var(--accent);
+  --state-done: oklch(72% 0.15 150);
+  --state-paused: oklch(78% 0.13 85);
+  --state-error: oklch(66% 0.19 25);
+  --state-queued: var(--text-dim);
 
-  --font-ui: "Nunito", "Segoe UI", system-ui, sans-serif;
+  /* protocol badges */
+  --proto-sftp: var(--accent);
+  --proto-ftp: oklch(75% 0.12 85);
+  --proto-s3: oklch(72% 0.14 55);
+  --proto-webdav: oklch(70% 0.12 300);
+
+  --border: oklch(29% 0.014 260);
+  --border-strong: oklch(38% 0.018 260);
+  --scrim: oklch(10% 0.01 260 / 0.6);
+
+  /* typography — Segoe UI Variable is native on Win11 (Inter subset lands
+     with the bundled-font pass) */
+  --font-ui: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
 
-  --text-xs: 0.72rem;
-  --text-sm: 0.8rem;
-  --text-md: 0.9rem;
+  --text-2xs: 0.6875rem; /* chips, badges */
+  --text-xs: 0.75rem;    /* secondary columns, footers */
+  --text-sm: 0.8125rem;  /* listing rows, default UI */
+  --text-md: 0.875rem;   /* inputs, buttons */
+  --text-lg: 1rem;       /* dialog titles */
+  --text-xl: 1.25rem;    /* alarm titles only */
+
+  /* 4px spacing grid */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+
+  --radius-xs: 3px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
 
   --row-h: 26px;
-  --radius: 6px;
 
-  --duration-fast: 120ms;
+  /* motion — transform/opacity only */
+  --dur-instant: 80ms;
+  --dur-fast: 120ms;
+  --dur-normal: 180ms;
+  --dur-slow: 240ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
+
+  --shadow-1: 0 8px 24px oklch(0% 0 0 / 0.4);
+  --shadow-2: 0 16px 48px oklch(0% 0 0 / 0.5);
 }

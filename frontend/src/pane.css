@@ -1,0 +1,290 @@
+/* File pane — ux-spec §7.1, §7.12, §3.2, §3.5 */
+
+.pane {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  min-height: 0;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  position: relative;
+  transition: border-color var(--dur-fast) var(--ease-out);
+}
+.pane--active {
+  border-color: var(--accent-dim);
+}
+/* connection aura — ux-spec §8.3 */
+.pane--active::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 12px;
+  background: linear-gradient(var(--accent-glow), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* toolbar */
+.pane__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-2);
+  background: var(--surface-2);
+  position: relative;
+  z-index: 2;
+}
+.pane__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  transition: background var(--dur-instant), color var(--dur-instant);
+}
+.pane__btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--accent);
+}
+.pane__btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.pane__source {
+  max-width: 130px;
+  height: 26px;
+  padding: 0 var(--sp-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  color: var(--text-mid);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.pane__source:hover {
+  border-color: var(--border-strong);
+}
+
+/* breadcrumb — ux-spec §3.2 */
+.crumbs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  height: 26px;
+  padding: 0 var(--sp-1);
+  border-radius: var(--radius-xs);
+  overflow: hidden;
+  white-space: nowrap;
+}
+.crumbs:hover {
+  background: oklch(0% 0 0 / 0.12);
+}
+.crumb {
+  border: none;
+  background: none;
+  padding: 2px 4px;
+  color: var(--text-dim);
+  font-size: var(--text-sm);
+  font-family: var(--font-data);
+  cursor: pointer;
+  border-radius: var(--radius-xs);
+}
+.crumb:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+.crumb--last {
+  color: var(--text);
+}
+.crumb-sep {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+  padding: 0 1px;
+}
+.crumbs__edit {
+  flex: 1;
+  height: 26px;
+  min-width: 0;
+  background: var(--surface-0);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius-xs);
+  color: var(--text);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  padding: 0 var(--sp-2);
+}
+.crumbs__edit:focus-visible {
+  outline: none;
+}
+
+/* filter strip — ux-spec §3.5 */
+.pane__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-2);
+  background: var(--surface-2);
+  border-top: 1px solid var(--border);
+}
+.pane__filter input {
+  flex: 1;
+  height: 22px;
+  background: var(--surface-0);
+  border: 1px solid var(--accent-dim);
+  border-radius: var(--radius-xs);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  padding: 0 var(--sp-2);
+}
+.pane__filter input:focus-visible {
+  outline: none;
+}
+.pane__filter span {
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  font-family: var(--font-data);
+}
+
+/* listing */
+.pane__scroll {
+  overflow-y: auto;
+  min-height: 0;
+  outline: none;
+  position: relative;
+}
+.pane__scroll:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent-dim);
+}
+.row {
+  position: absolute;
+  inset-inline: 0;
+  height: var(--row-h);
+  display: grid;
+  grid-template-columns: 1fr 88px 118px;
+  gap: var(--sp-2);
+  align-items: center;
+  padding: 0 var(--sp-3);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-mid);
+  cursor: default;
+  white-space: nowrap;
+  transition: background var(--dur-instant);
+}
+.row:hover {
+  background: var(--surface-3);
+}
+.row--dir {
+  color: var(--text);
+}
+.row--cursor {
+  box-shadow: inset 0 0 0 1px var(--accent-dim);
+  background: var(--surface-3);
+}
+.pane:not(.pane--active) .row--cursor {
+  box-shadow: inset 0 0 0 1px oklch(60% 0.1 190 / 0.4);
+  background: transparent;
+}
+.row--marked {
+  background: var(--accent-glow);
+}
+.row--marked .row__size {
+  color: var(--accent);
+}
+.row--marked.row--cursor {
+  background: var(--accent-glow);
+}
+.row__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.row__icon {
+  color: var(--text-dim);
+  flex: none;
+  width: 15px;
+  text-align: center;
+}
+.row--dir .row__icon {
+  color: var(--accent-dim);
+}
+.row__size {
+  text-align: right;
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+.row__time {
+  color: var(--text-faint);
+  font-size: var(--text-xs);
+}
+
+/* skeleton / empty / error — ux-spec §7.12 */
+.pane__skeleton {
+  padding: var(--sp-2) var(--sp-3);
+  display: grid;
+  gap: 6px;
+}
+.pane__skeleton div {
+  height: 18px;
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  animation: skel 1.2s ease-in-out infinite;
+}
+@keyframes skel {
+  50% {
+    opacity: 0.55;
+  }
+}
+.pane__empty {
+  display: grid;
+  place-content: center;
+  gap: var(--sp-2);
+  height: 100%;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--text-sm);
+}
+.pane__error {
+  margin: var(--sp-3);
+  padding: var(--sp-3);
+  border-left: 3px solid var(--state-error);
+  background: var(--surface-2);
+  border-radius: var(--radius-xs);
+  font-size: var(--text-sm);
+}
+.pane__error p {
+  color: var(--state-error);
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  margin-bottom: var(--sp-2);
+  user-select: text;
+}
+.pane__error div {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+/* footer */
+.pane__status {
+  display: flex;
+  gap: var(--sp-3);
+  padding: 4px var(--sp-3);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  background: var(--surface-2);
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+.pane__status .marked {
+  color: var(--accent);
+}

@@ -1,64 +1,64 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { listLocal, localRoots, type FsEntry, type FsRoot, type Listing } from "../ipc";
+import { usePaneNav } from "../hooks/usePaneNav";
+import { connectSite, localHome, type FsEntry } from "../ipc";
+import { formatSize, formatTime } from "../lib/format";
 import { useUiStore, type PaneSide } from "../store";
+import Breadcrumb from "./Breadcrumb";
 
-function formatSize(size: number): string {
-  if (size < 0) return "";
-  if (size < 1024) return `${size} B`;
-  const units = ["KiB", "MiB", "GiB", "TiB"];
-  let v = size;
-  let u = -1;
-  do {
-    v /= 1024;
-    u++;
-  } while (v >= 1024 && u < units.length - 1);
-  return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[u]}`;
+export interface PaneCmd {
+  side: PaneSide;
+  cmd: "up" | "editpath" | "filter" | "invert" | "clearmarks" | "reload";
 }
 
-function formatTime(rfc3339: string): string {
-  return rfc3339.replace("T", " ").replace(/:\d\dZ$/, "");
+function matches(name: string, filter: string): boolean {
+  const f = filter.toLowerCase();
+  if (/[*?]/.test(f)) {
+    const re = new RegExp(
+      "^" + f.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*").replace(/\?/g, ".") + "$",
+      "i",
+    );
+    return re.test(name);
+  }
+  return name.toLowerCase().includes(f);
 }
 
 export default function FilePane({ side }: { side: PaneSide }) {
-  const path = useUiStore((s) => s.panes[side].path);
-  const setPath = useUiStore((s) => s.setPath);
+  const { source, path } = useUiStore((s) => s.panes[side]);
   const isActive = useUiStore((s) => s.activePane === side);
   const setActivePane = useUiStore((s) => s.setActivePane);
+  const setPane = useUiStore((s) => s.setPane);
+  const sites = useUiStore((s) => s.sites);
+  const connStates = useUiStore((s) => s.connStates);
+  const setQuickConnect = useUiStore((s) => s.setQuickConnect);
 
-  const [listing, setListing] = useState<Listing | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [roots, setRoots] = useState<FsRoot[]>([]);
+  const nav = usePaneNav(side);
   const [cursor, setCursor] = useState(0);
-  const [pathDraft, setPathDraft] = useState("");
+  const [marks, setMarks] = useState<Set<string>>(new Set());
+  const [filter, setFilter] = useState<string | null>(null);
+  const [editReq, setEditReq] = useState(0);
 
   const scrollRef = useRef<HTMLDivElement>(null);
+  const filterRef = useRef<HTMLInputElement>(null);
+
+  const all = nav.listing?.entries ?? [];
+  const entries = useMemo(
+    () => (filter ? all.filter((e) => matches(e.name, filter)) : all),
+    [all, filter],
+  );
+
+  // Reset selection state on navigation.
+  useEffect(() => {
+    setCursor(0);
+    setMarks(new Set());
+    setFilter(null);
+    scrollRef.current?.scrollTo({ top: 0 });
+  }, [nav.listing?.path]);
 
   useEffect(() => {
-    localRoots().then(setRoots).catch(() => setRoots([]));
-  }, []);
+    if (filter !== null) filterRef.current?.focus();
+  }, [filter !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => {
-    if (!path) return;
-    let stale = false;
-    listLocal(path)
-      .then((l) => {
-        if (stale) return;
-        setListing(l);
-        setError(null);
-        setCursor(0);
-        setPathDraft(l.path);
-        scrollRef.current?.scrollTo({ top: 0 });
-      })
-      .catch((e: unknown) => {
-        if (!stale) setError(String(e));
-      });
-    return () => {
-      stale = true;
-    };
-  }, [path]);
-
-  const entries = listing?.entries ?? [];
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollRef.current,
@@ -66,41 +66,165 @@ export default function FilePane({ side }: { side: PaneSide }) {
     overscan: 20,
   });
 
-  const open = useCallback(
-    (e: FsEntry) => {
-      if (!listing) return;
-      if (e.isDir) {
-        const sep = listing.path.includes("\\") ? "\\" : "/";
-        const base = listing.path.endsWith(sep) ? listing.path : listing.path + sep;
-        setPath(side, base + e.name);
-      }
-      // files: transfer enqueueing arrives in Phase 1
+  const moveCursor = useCallback(
+    (n: number) => {
+      setCursor(n);
+      virtualizer.scrollToIndex(n);
     },
-    [listing, setPath, side],
+    [virtualizer],
   );
 
-  const goUp = useCallback(() => {
-    if (listing?.parent) setPath(side, listing.parent);
-  }, [listing, setPath, side]);
+  const open = useCallback(
+    (e: FsEntry) => {
+      if (!nav.listing) return;
+      if (e.isDir) {
+        const sep = nav.listing.path.includes("\\") ? "\\" : "/";
+        const base = nav.listing.path.endsWith(sep) ? nav.listing.path : nav.listing.path + sep;
+        nav.navigate(base + e.name);
+      }
+      // files: F5 transfer semantics arrive with the queue dispatcher
+    },
+    [nav],
+  );
 
-  const onKeyDown = (ev: React.KeyboardEvent) => {
-    if (!entries.length) return;
+  const toggleMark = useCallback((name: string) => {
+    setMarks((m) => {
+      const next = new Set(m);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }, []);
+
+  const invertMarks = useCallback(() => {
+    setMarks((m) => {
+      const next = new Set<string>();
+      for (const e of entries) if (!m.has(e.name)) next.add(e.name);
+      return next;
+    });
+  }, [entries]);
+
+  // Commands from the palette / global shortcuts.
+  useEffect(() => {
+    const handler = (ev: Event) => {
+      const { side: s, cmd } = (ev as CustomEvent<PaneCmd>).detail;
+      if (s !== side) return;
+      if (cmd === "up") nav.up();
+      else if (cmd === "editpath") setEditReq((n) => n + 1);
+      else if (cmd === "filter") setFilter((f) => (f === null ? "" : f));
+      else if (cmd === "invert") invertMarks();
+      else if (cmd === "clearmarks") setMarks(new Set());
+      else if (cmd === "reload") nav.reload();
+    };
+    window.addEventListener("ws:panecmd", handler);
+    return () => window.removeEventListener("ws:panecmd", handler);
+  }, [side, nav, invertMarks]);
+
+  // Active-pane shortcuts that must work outside the list focus.
+  useEffect(() => {
+    if (!isActive) return;
+    const handler = (e: KeyboardEvent) => {
+      const inField =
+        e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+      if (e.ctrlKey && e.key.toLowerCase() === "l") {
+        e.preventDefault();
+        setEditReq((n) => n + 1);
+      } else if (e.ctrlKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFilter((f) => (f === null ? "" : f));
+      } else if (e.altKey && e.key === "ArrowLeft" && !inField) {
+        e.preventDefault();
+        nav.back();
+      } else if (e.altKey && e.key === "ArrowRight" && !inField) {
+        e.preventDefault();
+        nav.forward();
+      } else if (e.altKey && e.key === "ArrowUp" && !inField) {
+        e.preventDefault();
+        nav.up();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [isActive, nav]);
+
+  const onListKeyDown = (ev: React.KeyboardEvent) => {
+    if (!entries.length && !["Backspace"].includes(ev.key)) return;
+    const e = entries[cursor];
     if (ev.key === "ArrowDown") {
       ev.preventDefault();
-      const n = Math.min(cursor + 1, entries.length - 1);
-      setCursor(n);
-      virtualizer.scrollToIndex(n);
+      moveCursor(Math.min(cursor + 1, entries.length - 1));
     } else if (ev.key === "ArrowUp") {
       ev.preventDefault();
-      const n = Math.max(cursor - 1, 0);
-      setCursor(n);
-      virtualizer.scrollToIndex(n);
+      moveCursor(Math.max(cursor - 1, 0));
+    } else if (ev.key === "Home") {
+      ev.preventDefault();
+      moveCursor(0);
+    } else if (ev.key === "End") {
+      ev.preventDefault();
+      moveCursor(entries.length - 1);
+    } else if (ev.key === "PageDown") {
+      ev.preventDefault();
+      moveCursor(Math.min(cursor + 20, entries.length - 1));
+    } else if (ev.key === "PageUp") {
+      ev.preventDefault();
+      moveCursor(Math.max(cursor - 20, 0));
     } else if (ev.key === "Enter") {
       ev.preventDefault();
-      open(entries[cursor]);
+      if (e) open(e);
     } else if (ev.key === "Backspace") {
       ev.preventDefault();
-      goUp();
+      nav.up();
+    } else if (ev.key === "Insert") {
+      ev.preventDefault();
+      if (e) {
+        toggleMark(e.name);
+        moveCursor(Math.min(cursor + 1, entries.length - 1));
+      }
+    } else if (ev.key === " ") {
+      ev.preventDefault();
+      if (e) toggleMark(e.name);
+    } else if (ev.key === "*") {
+      ev.preventDefault();
+      invertMarks();
+    } else if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === "a") {
+      ev.preventDefault();
+      setMarks(new Set());
+    } else if (ev.ctrlKey && ev.key.toLowerCase() === "a") {
+      ev.preventDefault();
+      setMarks(new Set(entries.map((x) => x.name)));
+    } else if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      // typing opens the filter strip (ux-spec §3.5)
+      ev.preventDefault();
+      setFilter((f) => (f ?? "") + ev.key);
+    }
+  };
+
+  const markedSize = useMemo(() => {
+    let total = 0;
+    for (const e of all) if (marks.has(e.name) && e.size > 0) total += e.size;
+    return total;
+  }, [all, marks]);
+
+  const connState = typeof source === "number" ? connStates[source] : undefined;
+  const siteName =
+    typeof source === "number" ? sites.find((s) => s.id === source)?.name ?? `site ${source}` : null;
+
+  const switchSource = async (value: string) => {
+    if (value === "local") {
+      const home = await localHome().catch(() => "/");
+      setPane(side, "local", home);
+    } else if (value === "__new__") {
+      setQuickConnect(true, side);
+    } else {
+      const id = Number(value);
+      try {
+        await connectSite(id);
+        setPane(side, id, "/");
+      } catch (err) {
+        window.dispatchEvent(
+          new CustomEvent("ws:toast", { detail: { kind: "error", text: String(err) } }),
+        );
+      }
     }
   };
 
@@ -111,53 +235,124 @@ export default function FilePane({ side }: { side: PaneSide }) {
       aria-label={`File pane ${side + 1}`}
     >
       <header className="pane__bar">
-        {roots.length > 1 && (
-          <select
-            className="pane__roots"
-            value=""
-            onChange={(ev) => ev.target.value && setPath(side, ev.target.value)}
-            aria-label="Drive"
-          >
-            <option value="">◈</option>
-            {roots.map((r) => (
-              <option key={r.path} value={r.path}>
-                {r.label}
-              </option>
-            ))}
-          </select>
+        <select
+          className="pane__source"
+          value={typeof source === "number" ? String(source) : "local"}
+          onChange={(e) => void switchSource(e.target.value)}
+          aria-label="Pane source"
+        >
+          <option value="local">This PC</option>
+          {sites.map((s) => (
+            <option key={s.id} value={s.id}>
+              ⇅ {s.name}
+            </option>
+          ))}
+          <option value="__new__">+ Connect…</option>
+        </select>
+        {siteName && (
+          <span
+            className={`conn-dot conn-dot--${connState ?? "disconnected"}`}
+            title={`${siteName}: ${connState ?? "disconnected"}`}
+          />
         )}
-        <button className="pane__up" onClick={goUp} disabled={!listing?.parent} aria-label="Parent directory">
+        <button className="pane__btn" onClick={nav.back} disabled={!nav.canBack} title="Back (Alt+←)">
+          ‹
+        </button>
+        <button
+          className="pane__btn"
+          onClick={nav.forward}
+          disabled={!nav.canForward}
+          title="Forward (Alt+→)"
+        >
+          ›
+        </button>
+        <button
+          className="pane__btn"
+          onClick={nav.up}
+          disabled={!nav.listing?.parent}
+          title="Up (Backspace)"
+        >
           ↑
         </button>
-        <input
-          className="pane__path"
-          value={pathDraft}
-          onChange={(ev) => setPathDraft(ev.target.value)}
-          onKeyDown={(ev) => ev.key === "Enter" && setPath(side, pathDraft)}
-          spellCheck={false}
-          aria-label="Path"
-        />
+        <Breadcrumb path={nav.listing?.path ?? path} onNavigate={nav.navigate} editReq={editReq} />
       </header>
 
-      {error ? (
-        <div className="pane__error" role="alert">
-          {error}
+      {filter !== null && (
+        <div className="pane__filter">
+          <input
+            ref={filterRef}
+            value={filter}
+            placeholder="filter… (* and ? glob)"
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setFilter(null);
+                scrollRef.current?.focus();
+              } else if (e.key === "Enter") {
+                scrollRef.current?.focus();
+              }
+              e.stopPropagation();
+            }}
+          />
+          <span>
+            {entries.length} / {all.length}
+          </span>
+        </div>
+      )}
+
+      {nav.error ? (
+        <div>
+          <div className="pane__error" role="alert">
+            <p>{nav.error}</p>
+            <div>
+              <button className="btn" onClick={nav.reload}>
+                Retry
+              </button>
+              <button className="btn" onClick={nav.up}>
+                Go up
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : nav.loading && !nav.listing ? (
+        <div className="pane__skeleton" aria-hidden>
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} style={{ width: `${90 - i * 7}%` }} />
+          ))}
+        </div>
+      ) : entries.length === 0 ? (
+        <div className="pane__empty">
+          <div>{filter ? `No matches for “${filter}”` : "Empty directory"}</div>
+          <div>{filter ? "Esc to clear" : ""}</div>
         </div>
       ) : (
-        <div className="pane__scroll" ref={scrollRef} tabIndex={0} onKeyDown={onKeyDown}>
+        <div className="pane__scroll" ref={scrollRef} tabIndex={0} onKeyDown={onListKeyDown} role="grid">
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
               const e = entries[vi.index];
+              const cls = [
+                "row",
+                e.isDir ? "row--dir" : "",
+                vi.index === cursor ? "row--cursor" : "",
+                marks.has(e.name) ? "row--marked" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
               return (
                 <div
                   key={vi.key}
-                  className={`row ${e.isDir ? "row--dir" : ""} ${vi.index === cursor ? "row--cursor" : ""}`}
+                  className={cls}
                   style={{ transform: `translateY(${vi.start}px)` }}
-                  onClick={() => setCursor(vi.index)}
+                  onClick={(ev) => {
+                    if (ev.ctrlKey) toggleMark(e.name);
+                    setCursor(vi.index);
+                  }}
                   onDoubleClick={() => open(e)}
+                  role="row"
+                  aria-selected={marks.has(e.name)}
                 >
                   <span className="row__name">
-                    {e.isDir ? "▸ " : "  "}
+                    <span className="row__icon">{e.isDir ? "▸" : "·"}</span>
                     {e.name}
                   </span>
                   <span className="row__size">{formatSize(e.size)}</span>
@@ -170,7 +365,13 @@ export default function FilePane({ side }: { side: PaneSide }) {
       )}
 
       <footer className="pane__status">
-        {listing ? `${entries.length} items` : "…"}
+        <span>{all.length} items</span>
+        {marks.size > 0 && (
+          <span className="marked">
+            {marks.size} marked · {formatSize(markedSize)}
+          </span>
+        )}
+        {filter && <span>filtered</span>}
       </footer>
     </section>
   );
