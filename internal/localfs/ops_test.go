@@ -30,6 +30,49 @@ func TestDeleteRemovesFilesAndTrees(t *testing.T) {
 	}
 }
 
+func TestDeleteReportsMissingPathsInsteadOfClaimingSuccess(t *testing.T) {
+	// Arrange — os.RemoveAll returns nil for a path that was never there,
+	// which would let the UI announce deletions that never happened.
+	dir := t.TempDir()
+
+	// Act
+	n, err := Delete([]string{filepath.Join(dir, "never-existed")})
+
+	// Assert
+	if err == nil {
+		t.Fatal("deleting a missing path reported success")
+	}
+	if n != 0 {
+		t.Fatalf("counted %d removals for a missing path", n)
+	}
+}
+
+func TestDeleteRemovesSymlinkNotItsTarget(t *testing.T) {
+	// Arrange — a link pointing at a directory of real files
+	dir := t.TempDir()
+	target := filepath.Join(dir, "real")
+	os.Mkdir(target, 0o755)
+	os.WriteFile(filepath.Join(target, "keep.bin"), []byte("precious"), 0o644)
+	link := filepath.Join(dir, "link")
+	if err := os.Symlink(target, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	// Act
+	n, err := Delete([]string{link})
+
+	// Assert — the link goes, the target and its contents stay
+	if err != nil || n != 1 {
+		t.Fatalf("Delete = %d, %v; want 1, nil", n, err)
+	}
+	if _, err := os.Lstat(link); !os.IsNotExist(err) {
+		t.Fatal("symlink survived")
+	}
+	if _, err := os.Stat(filepath.Join(target, "keep.bin")); err != nil {
+		t.Fatal("link target's contents were destroyed")
+	}
+}
+
 func TestRenameRejectsPathEscapes(t *testing.T) {
 	// Arrange
 	dir := t.TempDir()

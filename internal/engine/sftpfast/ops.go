@@ -26,11 +26,14 @@ func (c *Client) Remove(ctx context.Context, remotePath string) error {
 	if clean == "/" || clean == "." || clean == "" {
 		return fmt.Errorf("refusing to delete %q", remotePath)
 	}
-	st, err := c.sftp.Stat(clean)
+	// Lstat, never Stat: Stat resolves a symlink, so deleting a link to a
+	// directory would recurse into and destroy the TARGET's contents
+	// somewhere else on the server. Deleting a link removes the link.
+	st, err := c.sftp.Lstat(clean)
 	if err != nil {
 		return fmt.Errorf("stat %q: %w", clean, err)
 	}
-	if !st.IsDir() {
+	if st.Mode()&os.ModeSymlink != 0 || !st.IsDir() {
 		if err := c.sftp.Remove(clean); err != nil {
 			return fmt.Errorf("delete %q: %w", path.Base(clean), err)
 		}

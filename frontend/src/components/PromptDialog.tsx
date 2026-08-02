@@ -69,12 +69,14 @@ export default function PromptDialog({
           />
         )}
         <div className="dialog__actions">
-          <button className="btn" onClick={onClose}>
+          <button className="btn" autoFocus={spec.danger} onClick={onClose}>
             Cancel
           </button>
           <button
             className={`btn ${spec.danger ? "btn--danger" : "btn--primary"}`}
-            autoFocus={spec.initialValue === undefined}
+            // Destructive confirms start unfocused: focus goes to Cancel, so
+            // a stray Enter or Space cannot delete anything.
+            autoFocus={spec.initialValue === undefined && !spec.danger}
             onClick={confirm}
           >
             {spec.confirmLabel}

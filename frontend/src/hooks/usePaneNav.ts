@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { list, type Listing } from "../ipc";
+import { list, type Listing, type PaneSource } from "../ipc";
 import { useUiStore, type PaneSide } from "../store";
 
 const SKELETON_DELAY_MS = 150; // ux-spec §7.12: no skeleton on fast listings
@@ -37,10 +37,22 @@ export function usePaneNav(side: PaneSide): PaneNav {
   const { source, path } = useUiStore((s) => s.panes[side]);
   const setPath = useUiStore((s) => s.setPath);
 
-  const [listing, setListing] = useState<Listing | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // The loaded listing is tagged with the source that produced it and
+  // matched during render, not in an effect. A pane must never expose a
+  // remote listing while its source already says "local": every path the UI
+  // builds from it — including the ones Delete acts on — would be wrong.
+  const [loaded, setLoaded] = useState<{ source: PaneSource; listing: Listing } | null>(null);
+  const [failure, setFailure] = useState<{ source: PaneSource; message: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [nonce, setNonce] = useState(0);
+
+  const listing = loaded && loaded.source === source ? loaded.listing : null;
+  const error = failure && failure.source === source ? failure.message : null;
+
+  const setListing = useCallback(
+    (l: Listing, from: PaneSource) => setLoaded({ source: from, listing: l }),
+    [],
+  );
 
   const hist = useRef<{ stack: string[]; idx: number }>({ stack: [], idx: -1 });
   const traveling = useRef(false);
@@ -58,16 +70,16 @@ export function usePaneNav(side: PaneSide): PaneNav {
     const cached = listingCache.get(key);
     if (cached) {
       // SWR: show the cached listing immediately, refresh in background.
-      setListing(cached);
-      setError(null);
+      setListing(cached, source);
+      setFailure(null);
     }
     const skeleton = setTimeout(() => !stale && !cached && setLoading(true), SKELETON_DELAY_MS);
 
     list(source, path)
       .then((l) => {
         if (stale) return;
-        setListing(l);
-        setError(null);
+        setListing(l, source);
+        setFailure(null);
         cachePut(key, l);
         cachePut(`${String(source)}|${l.path}`, l);
         const h = hist.current;
@@ -79,7 +91,7 @@ export function usePaneNav(side: PaneSide): PaneNav {
         }
       })
       .catch((e: unknown) => {
-        if (!stale) setError(String(e));
+        if (!stale) setFailure({ source, message: String(e) });
       })
       .finally(() => {
         if (!stale) {

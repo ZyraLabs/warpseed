@@ -34,6 +34,12 @@ func Delete(paths []string) (int, error) {
 		if parent := filepath.Dir(abs); parent == abs {
 			return removed, fmt.Errorf("refusing to delete the root %q", abs)
 		}
+		// RemoveAll reports success for a path that was never there, which
+		// would let the UI claim it deleted files it never touched. Verify
+		// the target exists so a wrong path surfaces as an error.
+		if _, err := os.Lstat(abs); err != nil {
+			return removed, fmt.Errorf("delete %q: %w", filepath.Base(abs), err)
+		}
 		if err := os.RemoveAll(abs); err != nil {
 			return removed, fmt.Errorf("delete %q: %w", filepath.Base(abs), err)
 		}
