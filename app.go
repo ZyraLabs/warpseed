@@ -729,6 +729,52 @@ func (a *App) ClearDoneTransfers() error {
 	return err
 }
 
+// --- Bookmark bindings ---
+//
+// siteID 0 is the local filesystem, matching the storage convention.
+
+// BookmarksFor lists saved folders for one pane source.
+func (a *App) BookmarksFor(siteID int64) ([]queue.Bookmark, error) {
+	if a.store == nil {
+		return nil, errNoStore
+	}
+	return a.store.Bookmarks(siteID)
+}
+
+// AddBookmark saves the given folder.
+func (a *App) AddBookmark(siteID int64, path, label string) error {
+	if a.store == nil {
+		return errNoStore
+	}
+	_, err := a.store.AddBookmark(siteID, path, label)
+	return err
+}
+
+// DeleteBookmark removes a saved folder.
+func (a *App) DeleteBookmark(id int64) error {
+	if a.store == nil {
+		return errNoStore
+	}
+	return a.store.DeleteBookmark(id)
+}
+
+// SetSiteRemotePath records the folder a site opens in, without requiring
+// the caller to round-trip the whole site record.
+func (a *App) SetSiteRemotePath(siteID int64, path string) error {
+	if a.store == nil {
+		return errNoStore
+	}
+	site, err := a.store.SiteByID(siteID)
+	if err != nil {
+		return err
+	}
+	site.RemotePath = path
+	if _, err := a.store.SaveSite(site); err != nil {
+		return err
+	}
+	return nil
+}
+
 // --- Settings bindings ---
 
 // settingValidators allowlists the keys the frontend may write AND the
@@ -741,6 +787,7 @@ var settingValidators = map[string]func(string) error{
 	"bw.percent":              intRange(10, 95),
 	"bw.mode":                 oneOf("off", "fixed", "percent"),
 	"ui.theme":                oneOf("dark", "light", "system"),
+	"ui.local_default":        anyString,          // the folder local panes open in
 	"transfers.chunk_min_mb":  intRange(0, 1<<20), // 0 disables chunking
 	"transfers.chunk_streams": intRange(1, 16),
 }
@@ -757,6 +804,10 @@ func intRange(lo, hi int) func(string) error {
 		return nil
 	}
 }
+
+// anyString accepts any value — used for free-form settings like a folder
+// path, which the filesystem validates when it is actually used.
+func anyString(string) error { return nil }
 
 func oneOf(allowed ...string) func(string) error {
 	return func(v string) error {

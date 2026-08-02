@@ -323,6 +323,11 @@
 .pane__content > .pane__scroll {
   flex: 1;
 }
+.pane__crumbwrap {
+  flex: 1;
+  display: flex;
+  min-width: 0;
+}
 .pane__btn--on {
   color: var(--accent);
   background: var(--surface-3);

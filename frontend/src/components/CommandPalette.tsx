@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { connectAndHome, disconnectSite, localHome } from "../ipc";
+import { connectAndHome, disconnectSite, getSettings, localHome } from "../ipc";
 import { useUiStore } from "../store";
 import type { PaneCmd } from "./FilePane";
 
@@ -53,8 +53,9 @@ export default function CommandPalette() {
       {
         label: "Switch pane to This PC",
         run: close(async () => {
-          const home = await localHome().catch(() => "/");
-          setPane(active, "local", home);
+          const cfg = await getSettings().catch(() => ({}) as Record<string, string>);
+          const target = cfg["ui.local_default"]?.trim() || (await localHome().catch(() => "/"));
+          setPane(active, "local", target);
         }),
       },
       { label: "New connection…", run: close(() => setQuickConnect(true, active)) },

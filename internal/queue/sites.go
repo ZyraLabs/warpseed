@@ -78,7 +78,9 @@ func (s *Store) SetSiteCredRef(id int64, ref string) error {
 	return nil
 }
 
-// DeleteSite removes a site; transfers/hostkeys cascade via FK.
+// DeleteSite removes a site; transfers/hostkeys cascade via FK. Bookmarks
+// cannot use a foreign key (site_id 0 means the local filesystem), so they
+// are purged here rather than left orphaned.
 func (s *Store) DeleteSite(id int64) error {
 	res, err := s.db.Exec(`DELETE FROM sites WHERE id=?`, id)
 	if err != nil {
@@ -86,6 +88,9 @@ func (s *Store) DeleteSite(id int64) error {
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrSiteNotFound
+	}
+	if _, err := s.db.Exec(`DELETE FROM bookmarks WHERE site_id=?`, id); err != nil {
+		return fmt.Errorf("delete site bookmarks: %w", err)
 	}
 	return nil
 }

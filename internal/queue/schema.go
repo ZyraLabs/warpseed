@@ -94,4 +94,18 @@ var migrations = []string{
 	ALTER TABLE transfers ADD COLUMN src_mtime INTEGER NOT NULL DEFAULT 0;
 	UPDATE settings SET value='6' WHERE key='transfers.site_max' AND value='3';
 	`,
+
+	// 005 — saved folder bookmarks. site_id 0 means the local filesystem, so
+	// one table serves both panes without a nullable foreign key.
+	`
+	CREATE TABLE bookmarks (
+		id         INTEGER PRIMARY KEY,
+		site_id    INTEGER NOT NULL DEFAULT 0,
+		path       TEXT NOT NULL,
+		label      TEXT NOT NULL DEFAULT '',
+		created_at TEXT NOT NULL,
+		UNIQUE (site_id, path)
+	);
+	INSERT OR IGNORE INTO settings(key,value) VALUES ('ui.local_default','');
+	`,
 }

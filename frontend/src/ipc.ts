@@ -11,10 +11,14 @@ import {
   EnqueueDownloads,
   EnqueueUploads,
   GetSettings,
+  AddBookmark,
+  BookmarksFor,
+  DeleteBookmark,
   ListLocal,
   ListRemote,
   LocalHome,
   LocalRoots,
+  SetSiteRemotePath,
   MkdirLocal,
   MkdirRemote,
   PauseTransfer,
@@ -130,6 +134,28 @@ export const renameEntry = (
   source === "local"
     ? RenameLocal(path, newName, dir)
     : RenameRemote(source, path, newName, dir);
+
+// --- bookmarks and pane defaults ---
+
+export interface Bookmark {
+  id: number;
+  siteId: number;
+  path: string;
+  label: string;
+  createdAt: string;
+}
+
+/** Storage uses siteId 0 for the local filesystem. */
+export const sourceKey = (source: PaneSource): number =>
+  source === "local" ? 0 : source;
+
+export const bookmarksFor = (source: PaneSource): Promise<Bookmark[]> =>
+  BookmarksFor(sourceKey(source)) as unknown as Promise<Bookmark[]>;
+export const addBookmark = (source: PaneSource, path: string, label: string): Promise<void> =>
+  AddBookmark(sourceKey(source), path, label);
+export const deleteBookmark = (id: number): Promise<void> => DeleteBookmark(id);
+export const setSiteRemotePath = (siteId: number, path: string): Promise<void> =>
+  SetSiteRemotePath(siteId, path);
 
 export const makeDir = (source: PaneSource, parent: string, name: string): Promise<void> =>
   source === "local" ? MkdirLocal(parent, name) : MkdirRemote(source, parent, name);

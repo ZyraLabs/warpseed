@@ -2,18 +2,26 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { usePaneNav } from "../hooks/usePaneNav";
 import {
+  addBookmark,
+  bookmarksFor,
   connectAndHome,
+  deleteBookmark,
   deleteEntries,
   enqueueDownloads,
   enqueueUploads,
+  getSettings,
   localHome,
   makeDir,
   on,
   renameEntry,
+  setSetting,
+  setSiteRemotePath,
+  type Bookmark,
   type FsChanged,
   type FsEntry,
 } from "../ipc";
 import { formatSize, formatTime } from "../lib/format";
+import { recentPaths, rememberPath } from "../lib/recents";
 import { useUiStore, type PaneSide } from "../store";
 import Breadcrumb from "./Breadcrumb";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
@@ -39,6 +47,15 @@ export interface PaneCmd {
     | "mkdir"
     | "rename"
     | "delete";
+}
+
+/** Keep a menu row readable: drop middle segments of a long path. */
+function shortenPath(p: string): string {
+  if (p.length <= 44) return p;
+  const parts = p.split(/[\\/]/).filter(Boolean);
+  if (parts.length <= 2) return p;
+  const sep = p.includes("\\") ? "\\" : "/";
+  return `${parts[0]}${sep}…${sep}${parts.slice(-2).join(sep)}`;
 }
 
 function matches(name: string, filter: string): boolean {
@@ -69,6 +86,8 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const [editReq, setEditReq] = useState(0);
   const [treeOpen, setTreeOpen] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry } | null>(null);
+  const [pathMenu, setPathMenu] = useState<{ x: number; y: number } | null>(null);
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [prompt, setPrompt] = useState<PromptSpec | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -247,6 +266,30 @@ export default function FilePane({ side }: { side: PaneSide }) {
     };
   }, []);
 
+  // Remember where we've been, per source, for the path menu.
+  useEffect(() => {
+    if (nav.listing?.path) rememberPath(source, nav.listing.path);
+  }, [source, nav.listing?.path]);
+
+  useEffect(() => {
+    void bookmarksFor(source).then(setBookmarks).catch(() => setBookmarks([]));
+  }, [source, pathMenu]);
+
+  // A Windows path typed into a pane that is browsing a site belongs to This
+  // PC — sending "D:\" to an SFTP server just fails confusingly. Switch the
+  // pane to local instead of asking the server about a drive letter.
+  const navigateSmart = useCallback(
+    (target: string) => {
+      const looksLocal = /^[A-Za-z]:[\\/]/.test(target) || target.startsWith("\\\\");
+      if (looksLocal && typeof source === "number") {
+        setPane(side, "local", target);
+        return;
+      }
+      nav.navigate(target);
+    },
+    [source, side, setPane, nav],
+  );
+
   const sep = (p: string) => (p.includes("\\") ? "\\" : "/");
   const joinHere = useCallback(
     (name: string) => {
@@ -398,6 +441,65 @@ export default function FilePane({ side }: { side: PaneSide }) {
     doDelete,
   ]);
 
+  // Right-click on the path bar: make this folder the default, remember it,
+  // and jump to recent or bookmarked folders.
+  const buildPathMenu = (): MenuItem[] => {
+    const here = nav.listing?.path ?? path;
+    const siteName =
+      typeof source === "number"
+        ? useUiStore.getState().sites.find((s) => s.id === source)?.name ?? "this site"
+        : null;
+    const items: MenuItem[] = [];
+
+    items.push({
+      label: siteName ? `Open ${siteName} here by default` : "Open This PC here by default",
+      disabled: !here,
+      run: () => {
+        const done = () => toast("success", `Default folder set to ${here}`);
+        const fail = (err: unknown) => toast("error", String(err));
+        if (typeof source === "number") {
+          void setSiteRemotePath(source, here).then(done).catch(fail);
+        } else {
+          void setSetting("ui.local_default", here).then(done).catch(fail);
+        }
+      },
+    });
+
+    const bookmarked = bookmarks.find((b) => b.path === here);
+    items.push(
+      bookmarked
+        ? {
+            label: "Remove bookmark",
+            run: () =>
+              void deleteBookmark(bookmarked.id)
+                .then(() => bookmarksFor(source).then(setBookmarks))
+                .catch((e: unknown) => toast("error", String(e))),
+          }
+        : {
+            label: "Remember this folder",
+            disabled: !here,
+            run: () =>
+              void addBookmark(source, here, "")
+                .then(() => bookmarksFor(source).then(setBookmarks))
+                .then(() => toast("success", "Folder bookmarked"))
+                .catch((e: unknown) => toast("error", String(e))),
+          },
+    );
+
+    const recents = recentPaths(source, here).slice(0, 5);
+    for (const p of recents) {
+      items.push({ label: shortenPath(p), hint: "recent", run: () => navigateSmart(p) });
+    }
+    for (const b of bookmarks.filter((x) => x.path !== here).slice(0, 8)) {
+      items.push({
+        label: b.label || shortenPath(b.path),
+        hint: "saved",
+        run: () => navigateSmart(b.path),
+      });
+    }
+    return items;
+  };
+
   // Right-click menu items for the entry under the pointer (acting on the
   // full mark set when the entry is part of it).
   const buildMenu = (entry: FsEntry): MenuItem[] => {
@@ -509,8 +611,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
 
   const switchSource = async (value: string) => {
     if (value === "local") {
-      const home = await localHome().catch(() => "/");
-      setPane(side, "local", home);
+      // Honour the saved default folder, falling back to the home directory.
+      const cfg = await getSettings().catch(() => ({}) as Record<string, string>);
+      const target = cfg["ui.local_default"]?.trim() || (await localHome().catch(() => "/"));
+      setPane(side, "local", target);
     } else if (value === "__new__") {
       setQuickConnect(true, side);
     } else {
@@ -584,7 +688,16 @@ export default function FilePane({ side }: { side: PaneSide }) {
         <button className="pane__btn" onClick={nav.reload} title="Refresh (Ctrl+R)">
           ↻
         </button>
-        <Breadcrumb path={nav.listing?.path ?? path} onNavigate={nav.navigate} editReq={editReq} />
+        <span
+          className="pane__crumbwrap"
+          onContextMenu={(ev) => {
+            ev.preventDefault();
+            setActivePane(side);
+            setPathMenu({ x: ev.clientX, y: ev.clientY });
+          }}
+        >
+          <Breadcrumb path={nav.listing?.path ?? path} onNavigate={navigateSmart} editReq={editReq} />
+        </span>
       </header>
 
       {filter !== null && (
@@ -693,6 +806,14 @@ export default function FilePane({ side }: { side: PaneSide }) {
 
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} items={buildMenu(menu.entry)} onClose={() => setMenu(null)} />
+      )}
+      {pathMenu && (
+        <ContextMenu
+          x={pathMenu.x}
+          y={pathMenu.y}
+          items={buildPathMenu()}
+          onClose={() => setPathMenu(null)}
+        />
       )}
       <PromptDialog spec={prompt} onClose={() => setPrompt(null)} />
 

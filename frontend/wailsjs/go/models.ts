@@ -169,6 +169,26 @@ export namespace main {
 
 export namespace queue {
 	
+	export class Bookmark {
+	    id: number;
+	    siteId: number;
+	    path: string;
+	    label: string;
+	    createdAt: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new Bookmark(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.id = source["id"];
+	        this.siteId = source["siteId"];
+	        this.path = source["path"];
+	        this.label = source["label"];
+	        this.createdAt = source["createdAt"];
+	    }
+	}
 	export class Site {
 	    id: number;
 	    name: string;

@@ -28,25 +28,26 @@ export default function App() {
 
   // Boot: home dirs, schema health, saved sites, backend event subscriptions.
   useEffect(() => {
-    void localHome()
-      .then((home) => {
-        setPane(0, "local", home);
-        setPane(1, "local", home);
-      })
-      .catch(() => {
-        setPane(0, "local", "/");
-        setPane(1, "local", "/");
-      });
     void schemaVersion().then(setDbSchemaVersion).catch(() => setDbSchemaVersion(0));
     void fetchSites().then(setSites).catch(() => undefined);
-    // Settings DB is the theme's source of truth; sync it over the mirror.
+    // Settings are the source of truth for the theme and the folder local
+    // panes open in; both are read once at boot.
     void import("./ipc").then(({ getSettings }) =>
       getSettings()
-        .then((cfg) => {
+        .then(async (cfg) => {
           const pref = cfg["ui.theme"] as ThemePref;
           if (pref === "dark" || pref === "light" || pref === "system") applyTheme(pref);
+
+          const fallback = await localHome().catch(() => "/");
+          const start = cfg["ui.local_default"]?.trim() || fallback;
+          setPane(0, "local", start);
+          setPane(1, "local", start);
         })
-        .catch(() => undefined),
+        .catch(async () => {
+          const home = await localHome().catch(() => "/");
+          setPane(0, "local", home);
+          setPane(1, "local", home);
+        }),
     );
     const offConn = on<ConnState>("site:connstate", (c) => setConnState(c.siteId, c.state));
     return offConn;
