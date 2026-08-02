@@ -8,6 +8,7 @@ import {
   type Site,
 } from "../ipc";
 import { formatSize } from "../lib/format";
+import { forgetSource } from "../lib/recents";
 import { applyTheme, type ThemePref } from "../lib/theme";
 import { useUiStore } from "../store";
 
@@ -112,6 +113,8 @@ export default function SettingsDialog() {
     }
     try {
       await deleteSite(draft.id);
+      // SQLite recycles rowids, so this site's jump list must go with it.
+      forgetSource(draft.id);
       setSites(await fetchSites());
       setDraft(null);
       setConfirmDelete(false);

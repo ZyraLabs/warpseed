@@ -6,6 +6,7 @@ import {
   sites as fetchSites,
   type Site,
 } from "../ipc";
+import { forgetSource } from "../lib/recents";
 import { useUiStore } from "../store";
 
 const EMPTY = { name: "", host: "", port: 22, username: "", password: "" };
@@ -78,6 +79,8 @@ export default function QuickConnect() {
     e.stopPropagation();
     try {
       await deleteSite(s.id);
+      // SQLite recycles rowids, so this site's jump list must go with it.
+      forgetSource(s.id);
       setSites(await fetchSites());
     } catch (err) {
       setError(String(err));

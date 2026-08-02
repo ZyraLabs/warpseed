@@ -82,17 +82,26 @@ func (s *Store) SetSiteCredRef(id int64, ref string) error {
 // cannot use a foreign key (site_id 0 means the local filesystem), so they
 // are purged here rather than left orphaned.
 func (s *Store) DeleteSite(id int64) error {
-	res, err := s.db.Exec(`DELETE FROM sites WHERE id=?`, id)
+	// One transaction: SQLite recycles rowids, so a site row that vanished
+	// while its bookmarks survived would hand another server's folders to
+	// whichever site is created next.
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin delete site: %w", err)
+	}
+	defer tx.Rollback()
+
+	res, err := tx.Exec(`DELETE FROM sites WHERE id=?`, id)
 	if err != nil {
 		return fmt.Errorf("delete site: %w", err)
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
 		return ErrSiteNotFound
 	}
-	if _, err := s.db.Exec(`DELETE FROM bookmarks WHERE site_id=?`, id); err != nil {
+	if _, err := tx.Exec(`DELETE FROM bookmarks WHERE site_id=?`, id); err != nil {
 		return fmt.Errorf("delete site bookmarks: %w", err)
 	}
-	return nil
+	return tx.Commit()
 }
 
 // Sites lists all saved sites, most recently updated first.

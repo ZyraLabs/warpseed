@@ -149,6 +149,22 @@ export interface Bookmark {
 export const sourceKey = (source: PaneSource): number =>
   source === "local" ? 0 : source;
 
+/** Resolve where a local pane should open: the configured default folder
+    when it still exists, else the home directory. A saved default pointing
+    at a folder that has since gone must not wedge the pane on every launch. */
+export async function localStart(configured?: string): Promise<string> {
+  const want = configured?.trim();
+  if (want) {
+    try {
+      await ListLocal(want);
+      return want;
+    } catch {
+      // fall through to home
+    }
+  }
+  return LocalHome().catch(() => "/");
+}
+
 export const bookmarksFor = (source: PaneSource): Promise<Bookmark[]> =>
   BookmarksFor(sourceKey(source)) as unknown as Promise<Bookmark[]>;
 export const addBookmark = (source: PaneSource, path: string, label: string): Promise<void> =>

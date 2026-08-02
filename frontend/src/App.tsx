@@ -8,7 +8,7 @@ import SettingsDialog from "./components/SettingsDialog";
 import Sparkline from "./components/Sparkline";
 import Toasts from "./components/Toasts";
 import { applyTheme, type ThemePref } from "./lib/theme";
-import { localHome, on, schemaVersion, sites as fetchSites, type ConnState } from "./ipc";
+import { localStart, on, schemaVersion, sites as fetchSites, type ConnState } from "./ipc";
 import { useUiStore } from "./store";
 import "./App.css";
 
@@ -38,13 +38,12 @@ export default function App() {
           const pref = cfg["ui.theme"] as ThemePref;
           if (pref === "dark" || pref === "light" || pref === "system") applyTheme(pref);
 
-          const fallback = await localHome().catch(() => "/");
-          const start = cfg["ui.local_default"]?.trim() || fallback;
+          const start = await localStart(cfg["ui.local_default"]);
           setPane(0, "local", start);
           setPane(1, "local", start);
         })
         .catch(async () => {
-          const home = await localHome().catch(() => "/");
+          const home = await localStart();
           setPane(0, "local", home);
           setPane(1, "local", home);
         }),

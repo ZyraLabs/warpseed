@@ -2,7 +2,10 @@ import { useEffect, useRef, useState } from "react";
 
 interface BreadcrumbProps {
   path: string;
+  /** Navigate to a segment of the path already shown — always this source. */
   onNavigate: (path: string) => void;
+  /** A path the user typed, which may not belong to this pane's source. */
+  onSubmitPath: (path: string) => void;
   /** Increment to enter edit mode (Ctrl+L). */
   editReq: number;
 }
@@ -36,7 +39,7 @@ function split(path: string): Segment[] {
 }
 
 /** Breadcrumb with inline edit (ux-spec §3.2). Overflow keeps root + last two. */
-export default function Breadcrumb({ path, onNavigate, editReq }: BreadcrumbProps) {
+export default function Breadcrumb({ path, onNavigate, onSubmitPath, editReq }: BreadcrumbProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(path);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -68,7 +71,7 @@ export default function Breadcrumb({ path, onNavigate, editReq }: BreadcrumbProp
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             setEditing(false);
-            if (draft.trim()) onNavigate(draft.trim());
+            if (draft.trim()) onSubmitPath(draft.trim());
           } else if (e.key === "Escape") {
             setEditing(false);
           }
