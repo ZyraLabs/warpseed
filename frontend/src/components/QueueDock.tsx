@@ -9,6 +9,7 @@ import {
   type TransferProgress,
   type TransferState,
 } from "../ipc";
+import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
 import { formatSize } from "../lib/format";
 import { useUiStore } from "../store";
 
@@ -36,7 +37,17 @@ function eta(bytes: number, size: number, rate: number): string {
 
 /** Persistent queue dock (ux-spec §4): collapsed aggregate strip, expandable
     row list, pause/resume/cancel with byte-resume semantics. */
+/** Resizable queue columns; the progress track absorbs the leftover space. */
+const QUEUE_COLUMNS: ColumnSpec[] = [
+  { id: "name", label: "File", min: 90, initial: 200 },
+  { id: "route", label: "Destination", min: 80, initial: 170 },
+  { id: "size", label: "Size", min: 56, initial: 84 },
+  { id: "rate", label: "Speed / ETA", min: 60, initial: 88 },
+  { id: "pct", label: "%", min: 40, initial: 52 },
+];
+
 export default function QueueDock() {
+  const { style: colStyle, startResize, reset } = useColumnWidths(QUEUE_COLUMNS);
   const [streak, setStreak] = useState(false);
   const transfers = useUiStore((s) => s.transfers);
   const progress = useUiStore((s) => s.progress);
@@ -109,11 +120,35 @@ export default function QueueDock() {
       </button>
 
       {open && (
-        <div className="dock__body">
+        <div className="dock__body" style={colStyle}>
           <div className="dock__header">
             <span className="grow" />
+            <button onClick={reset} title="Restore default column widths">
+              ⇔ Reset columns
+            </button>
             <button onClick={() => void clearDoneTransfers()}>✕ Clear done</button>
           </div>
+
+          {/* Column headers double as resize handles — drag the divider on
+              the right of a heading to widen it. */}
+          <div className="trow trow--head">
+            <span className="trow__icon" />
+            {QUEUE_COLUMNS.map((c) => (
+              <span key={c.id} className={`thead thead--${c.id}`}>
+                {c.label}
+                <span
+                  className="thead__grip"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize ${c.label}`}
+                  onMouseDown={(e) => startResize(c.id, e)}
+                />
+              </span>
+            ))}
+            <span className="thead">Progress</span>
+            <span />
+          </div>
+
           {live.length === 0 ? (
             <div className="dock__empty">Nothing queued — mark files and press F5</div>
           ) : (
@@ -121,6 +156,7 @@ export default function QueueDock() {
               const pct = t.size > 0 ? Math.min(t.bytes / t.size, 1) : 0;
               const siteName = sites.find((s) => s.id === t.siteId)?.name ?? `site ${t.siteId}`;
               const hasError = t.state === "failed" && t.error;
+              const lanes = t.chunks && t.chunks.length > 1 ? t.chunks : null;
               return (
                 <div key={t.id} className={`trow trow--${t.state} ${hasError ? "trow--witherror" : ""}`}>
                   <span className="trow__icon">{STATE_ICON[t.state] ?? "·"}</span>
@@ -130,15 +166,25 @@ export default function QueueDock() {
                   <span className="trow__route" title={`${t.src} → ${t.dst}`}>
                     {siteName} → {t.dst}
                   </span>
-                  {/* Hyperlane bar: one sub-track per connection when a file
-                      is split across several — the engine made visible. */}
-                  {t.chunks && t.chunks.length > 1 ? (
+                  <span className="trow__size" title={t.size > 0 ? `${t.size} bytes` : undefined}>
+                    {t.size > 0 ? formatSize(t.size) : "—"}
+                  </span>
+                  <span className="trow__rate">
+                    {t.state === "active" && t.rate > 0
+                      ? `${formatSize(t.rate)}/s`
+                      : eta(t.bytes, t.size, t.rate)}
+                  </span>
+                  <span className="trow__pct">
+                    {t.size > 0 ? `${Math.floor(pct * 100)}%` : formatSize(t.bytes)}
+                  </span>
+                  {/* Hyperlane: one sub-track per connection when a file is
+                      split across several — the engine made visible. */}
+                  {lanes ? (
                     <span
                       className="trow__bar trow__bar--hyper"
-                      aria-hidden
-                      title={`${t.chunks.length} parallel connections`}
+                      title={`Hyperlane · ${lanes.length} parallel connections`}
                     >
-                      {t.chunks.map((f, i) => (
+                      {lanes.map((f, i) => (
                         <span key={i} className="hyper__lane">
                           <span style={{ transform: `scaleX(${Math.min(Math.max(f, 0), 1)})` }} />
                         </span>
@@ -149,14 +195,6 @@ export default function QueueDock() {
                       <div style={{ transform: `scaleX(${pct})` }} />
                     </span>
                   )}
-                  <span className="trow__pct">
-                    {t.size > 0 ? `${Math.floor(pct * 100)}%` : formatSize(t.bytes)}
-                  </span>
-                  <span className="trow__rate">
-                    {t.state === "active" && t.rate > 0
-                      ? `${formatSize(t.rate)}/s`
-                      : eta(t.bytes, t.size, t.rate)}
-                  </span>
                   <span className="trow__actions">
                     {t.state === "active" || t.state === "pending" ? (
                       <button title="Pause" onClick={() => void pauseTransfer(t.id)}>

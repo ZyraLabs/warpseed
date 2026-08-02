@@ -179,8 +179,16 @@ export default function SettingsDialog() {
               onChange={(e) => put("transfers.site_max", e.target.value)}
             />
           </div>
+        </section>
+
+        <section className="set-section">
+          <h3>Hyperlane</h3>
+          <p className="set-note set-blurb">
+            Splits one large file across several connections at once, so a server that
+            caps the speed of each connection no longer caps the file.
+          </p>
           <div className="set-row">
-            <label>Split big files across</label>
+            <label>Lanes per file</label>
             <span className="set-inline">
               <input
                 type="number"
@@ -193,7 +201,7 @@ export default function SettingsDialog() {
             </span>
           </div>
           <div className="set-row">
-            <label>…when larger than</label>
+            <label>Engage above</label>
             <span className="set-inline">
               <input
                 type="number"
@@ -201,7 +209,7 @@ export default function SettingsDialog() {
                 value={cfg["transfers.chunk_min_mb"] ?? "256"}
                 onChange={(e) => put("transfers.chunk_min_mb", e.target.value)}
               />
-              <span className="set-note">MB — beats a per-connection speed cap</span>
+              <span className="set-note">MB</span>
             </span>
           </div>
         </section>

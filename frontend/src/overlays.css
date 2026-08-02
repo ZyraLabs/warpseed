@@ -338,6 +338,11 @@
   font-size: var(--text-2xs);
   color: var(--text-faint);
 }
+.set-blurb {
+  margin: calc(var(--sp-2) * -1) 0 var(--sp-3);
+  line-height: 1.5;
+  max-width: 46ch;
+}
 .set-msg {
   margin-top: var(--sp-2);
   user-select: text;

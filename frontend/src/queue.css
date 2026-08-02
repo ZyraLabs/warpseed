@@ -138,9 +138,19 @@
   color: var(--text);
 }
 
+/* Widths come from useColumnWidths as CSS variables, so dragging a column
+   never re-renders the rows. Progress takes whatever is left. */
 .trow {
   display: grid;
-  grid-template-columns: 16px minmax(120px, 1fr) minmax(100px, 160px) 56px 84px 72px auto;
+  grid-template-columns:
+    16px
+    var(--col-name, 200px)
+    var(--col-route, 170px)
+    var(--col-size, 84px)
+    var(--col-rate, 88px)
+    var(--col-pct, 52px)
+    minmax(80px, 1fr)
+    auto;
   gap: var(--sp-2);
   align-items: center;
   height: 32px;
@@ -149,6 +159,54 @@
   font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
   color: var(--text-mid);
+}
+
+/* header row */
+.trow--head {
+  height: 24px;
+  position: sticky;
+  top: 26px;
+  z-index: 1;
+  background: var(--surface-2);
+  color: var(--text-faint);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+.trow--head:hover {
+  background: var(--surface-2);
+}
+.thead {
+  position: relative;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: none;
+}
+.thead__grip {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  right: calc(var(--sp-2) / -2 - 1px);
+  width: 7px;
+  cursor: col-resize;
+}
+.thead__grip::after {
+  content: "";
+  position: absolute;
+  inset: 4px auto 4px 3px;
+  width: 1px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity var(--dur-instant);
+}
+.thead__grip:hover::after {
+  opacity: 1;
+}
+.trow__size {
+  text-align: right;
+  color: var(--text-dim);
 }
 .trow:hover {
   background: var(--surface-2);
@@ -300,6 +358,11 @@
 .trow--witherror {
   height: 48px;
   grid-template-rows: 22px 18px;
+}
+/* the hyperlane bar earns a touch more presence than a plain track */
+.trow__bar--hyper {
+  box-shadow: 0 0 0 1px var(--accent-glow);
+  border-radius: 3px;
 }
 .dock__empty {
   padding: var(--sp-3);
