@@ -44,7 +44,10 @@ export default function CommandPalette() {
       { label: "Go up", hint: "Backspace", run: close(() => paneCmd(active, "up")) },
       { label: "Edit path", hint: "Ctrl+L", run: close(() => paneCmd(active, "editpath")) },
       { label: "Filter listing", hint: "Ctrl+F", run: close(() => paneCmd(active, "filter")) },
-      { label: "Reload listing", run: close(() => paneCmd(active, "reload")) },
+      { label: "Refresh listing", hint: "Ctrl+R", run: close(() => paneCmd(active, "reload")) },
+      { label: "New folder…", hint: "F7", run: close(() => paneCmd(active, "mkdir")) },
+      { label: "Rename…", hint: "F2", run: close(() => paneCmd(active, "rename")) },
+      { label: "Delete selected", hint: "Del", run: close(() => paneCmd(active, "delete")) },
       { label: "Invert marks", hint: "*", run: close(() => paneCmd(active, "invert")) },
       { label: "Deselect all", hint: "Ctrl+Shift+A", run: close(() => paneCmd(active, "clearmarks")) },
       {

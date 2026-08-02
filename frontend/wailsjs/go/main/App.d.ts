@@ -11,6 +11,10 @@ export function ClearDoneTransfers():Promise<void>;
 
 export function ConnectSite(arg1:number):Promise<void>;
 
+export function DeleteLocal(arg1:Array<string>,arg2:string):Promise<number>;
+
+export function DeleteRemote(arg1:number,arg2:Array<string>,arg3:string):Promise<number>;
+
 export function DeleteSite(arg1:number):Promise<void>;
 
 export function DisconnectSite(arg1:number):Promise<void>;
@@ -29,9 +33,19 @@ export function LocalHome():Promise<string>;
 
 export function LocalRoots():Promise<Array<localfs.Root>>;
 
+export function MkdirLocal(arg1:string,arg2:string):Promise<void>;
+
+export function MkdirRemote(arg1:number,arg2:string,arg3:string):Promise<void>;
+
+export function MoveLocal(arg1:Array<string>,arg2:string,arg3:string):Promise<number>;
+
 export function PauseTransfer(arg1:number):Promise<void>;
 
 export function RemoteHome(arg1:number):Promise<string>;
+
+export function RenameLocal(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function RenameRemote(arg1:number,arg2:string,arg3:string,arg4:string):Promise<void>;
 
 export function ResolvePrompt(arg1:string,arg2:boolean):Promise<void>;
 

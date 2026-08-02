@@ -14,6 +14,14 @@ export function ConnectSite(arg1) {
   return window['go']['main']['App']['ConnectSite'](arg1);
 }
 
+export function DeleteLocal(arg1, arg2) {
+  return window['go']['main']['App']['DeleteLocal'](arg1, arg2);
+}
+
+export function DeleteRemote(arg1, arg2, arg3) {
+  return window['go']['main']['App']['DeleteRemote'](arg1, arg2, arg3);
+}
+
 export function DeleteSite(arg1) {
   return window['go']['main']['App']['DeleteSite'](arg1);
 }
@@ -50,12 +58,32 @@ export function LocalRoots() {
   return window['go']['main']['App']['LocalRoots']();
 }
 
+export function MkdirLocal(arg1, arg2) {
+  return window['go']['main']['App']['MkdirLocal'](arg1, arg2);
+}
+
+export function MkdirRemote(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MkdirRemote'](arg1, arg2, arg3);
+}
+
+export function MoveLocal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['MoveLocal'](arg1, arg2, arg3);
+}
+
 export function PauseTransfer(arg1) {
   return window['go']['main']['App']['PauseTransfer'](arg1);
 }
 
 export function RemoteHome(arg1) {
   return window['go']['main']['App']['RemoteHome'](arg1);
+}
+
+export function RenameLocal(arg1, arg2, arg3) {
+  return window['go']['main']['App']['RenameLocal'](arg1, arg2, arg3);
+}
+
+export function RenameRemote(arg1, arg2, arg3, arg4) {
+  return window['go']['main']['App']['RenameRemote'](arg1, arg2, arg3, arg4);
 }
 
 export function ResolvePrompt(arg1, arg2) {

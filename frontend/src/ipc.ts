@@ -4,6 +4,8 @@ import {
   CancelTransfer,
   ClearDoneTransfers,
   ConnectSite,
+  DeleteLocal,
+  DeleteRemote,
   DeleteSite,
   DisconnectSite,
   EnqueueDownloads,
@@ -13,8 +15,12 @@ import {
   ListRemote,
   LocalHome,
   LocalRoots,
+  MkdirLocal,
+  MkdirRemote,
   PauseTransfer,
   RemoteHome,
+  RenameLocal,
+  RenameRemote,
   ResolvePrompt,
   ResumeTransfer,
   SaveSite,
@@ -97,6 +103,36 @@ export interface ConnState {
   siteId: number;
   state: "connecting" | "connected" | "disconnected" | "error";
 }
+
+/** Emitted whenever a directory's contents change (transfer completed, file
+    deleted/renamed/created) so panes showing it can reload themselves. */
+export interface FsChanged {
+  source: "local" | "remote";
+  siteId: number;
+  dir: string;
+}
+
+// --- file operations ---
+
+export const deleteEntries = (
+  source: PaneSource,
+  paths: string[],
+  dir: string,
+): Promise<number> =>
+  source === "local" ? DeleteLocal(paths, dir) : DeleteRemote(source, paths, dir);
+
+export const renameEntry = (
+  source: PaneSource,
+  path: string,
+  newName: string,
+  dir: string,
+): Promise<void> =>
+  source === "local"
+    ? RenameLocal(path, newName, dir)
+    : RenameRemote(source, path, newName, dir);
+
+export const makeDir = (source: PaneSource, parent: string, name: string): Promise<void> =>
+  source === "local" ? MkdirLocal(parent, name) : MkdirRemote(source, parent, name);
 
 // --- transfers ---
 

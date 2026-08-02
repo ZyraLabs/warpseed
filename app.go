@@ -386,6 +386,98 @@ func (a *App) RemoteHome(id int64) (string, error) {
 	return client.Home()
 }
 
+// --- File operation bindings (local and remote) ---
+//
+// Each returns after the change lands so the caller can refresh, and emits
+// fs:changed so any pane showing that directory updates itself.
+
+// DeleteLocal removes local files/folders (recursive for folders).
+func (a *App) DeleteLocal(paths []string, dir string) (int, error) {
+	n, err := localfs.Delete(paths)
+	a.emitFsChanged("local", 0, dir)
+	return n, err
+}
+
+// RenameLocal renames one local entry in place.
+func (a *App) RenameLocal(path, newName, dir string) error {
+	err := localfs.Rename(path, newName)
+	a.emitFsChanged("local", 0, dir)
+	return err
+}
+
+// MkdirLocal creates a local folder.
+func (a *App) MkdirLocal(parent, name string) error {
+	err := localfs.Mkdir(parent, name)
+	a.emitFsChanged("local", 0, parent)
+	return err
+}
+
+// MoveLocal relocates local entries into destDir.
+func (a *App) MoveLocal(paths []string, destDir, dir string) (int, error) {
+	n, err := localfs.Move(paths, destDir)
+	a.emitFsChanged("local", 0, dir)
+	a.emitFsChanged("local", 0, destDir)
+	return n, err
+}
+
+// DeleteRemote removes remote files/folders over the site's browse
+// connection (recursive for folders).
+func (a *App) DeleteRemote(siteID int64, paths []string, dir string) (int, error) {
+	client, err := a.session(siteID)
+	if err != nil {
+		return 0, err
+	}
+	removed := 0
+	for _, p := range paths {
+		if rerr := client.Remove(a.ctx, p); rerr != nil {
+			a.emitFsChanged("remote", siteID, dir)
+			return removed, rerr
+		}
+		removed++
+	}
+	a.emitFsChanged("remote", siteID, dir)
+	return removed, nil
+}
+
+// RenameRemote renames one remote entry in place.
+func (a *App) RenameRemote(siteID int64, path, newName, dir string) error {
+	client, err := a.session(siteID)
+	if err != nil {
+		return err
+	}
+	rerr := client.RenameEntry(path, newName)
+	a.emitFsChanged("remote", siteID, dir)
+	return rerr
+}
+
+// MkdirRemote creates a remote folder.
+func (a *App) MkdirRemote(siteID int64, parent, name string) error {
+	client, err := a.session(siteID)
+	if err != nil {
+		return err
+	}
+	rerr := client.MkdirEntry(parent, name)
+	a.emitFsChanged("remote", siteID, parent)
+	return rerr
+}
+
+func (a *App) session(siteID int64) (*sftpfast.Client, error) {
+	a.mu.Lock()
+	client, ok := a.sessions[siteID]
+	a.mu.Unlock()
+	if !ok {
+		return nil, fmt.Errorf("site %d is not connected", siteID)
+	}
+	return client, nil
+}
+
+// emitFsChanged tells panes showing this directory to reload.
+func (a *App) emitFsChanged(kind string, siteID int64, dir string) {
+	a.sink.Emit("fs:changed", map[string]any{
+		"source": kind, "siteId": siteID, "dir": dir,
+	})
+}
+
 // ResolvePrompt answers a blocking engine prompt (host key, overwrite...).
 func (a *App) ResolvePrompt(promptID string, answer bool) {
 	if a.broker != nil {

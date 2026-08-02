@@ -1,12 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { usePaneNav } from "../hooks/usePaneNav";
-import { connectAndHome, enqueueDownloads, enqueueUploads, localHome, type FsEntry } from "../ipc";
+import {
+  connectAndHome,
+  deleteEntries,
+  enqueueDownloads,
+  enqueueUploads,
+  localHome,
+  makeDir,
+  on,
+  renameEntry,
+  type FsChanged,
+  type FsEntry,
+} from "../ipc";
 import { formatSize, formatTime } from "../lib/format";
 import { useUiStore, type PaneSide } from "../store";
 import Breadcrumb from "./Breadcrumb";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
 import DirTree from "./DirTree";
+import PromptDialog, { type PromptSpec } from "./PromptDialog";
 
 function toast(kind: "info" | "error" | "success", text: string) {
   window.dispatchEvent(new CustomEvent("ws:toast", { detail: { kind, text } }));
@@ -14,7 +26,16 @@ function toast(kind: "info" | "error" | "success", text: string) {
 
 export interface PaneCmd {
   side: PaneSide;
-  cmd: "up" | "editpath" | "filter" | "invert" | "clearmarks" | "reload";
+  cmd:
+    | "up"
+    | "editpath"
+    | "filter"
+    | "invert"
+    | "clearmarks"
+    | "reload"
+    | "mkdir"
+    | "rename"
+    | "delete";
 }
 
 function matches(name: string, filter: string): boolean {
@@ -45,6 +66,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const [editReq, setEditReq] = useState(0);
   const [treeOpen, setTreeOpen] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry } | null>(null);
+  const [prompt, setPrompt] = useState<PromptSpec | null>(null);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
@@ -104,6 +126,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
           items.map((e) => ({ src: base + e.name, size: e.size, isDir: e.isDir })),
           other.path,
         );
+        setMarks(new Set());
         useUiStore.getState().setQueueOpen(true);
         toast("success", `Queued ${items.length} item${items.length > 1 ? "s" : ""} for download`);
       } catch (err) {
@@ -182,6 +205,100 @@ export default function FilePane({ side }: { side: PaneSide }) {
     });
   }, [entries]);
 
+  // A completed transfer or a file operation elsewhere changes what this
+  // pane should be showing — reload when the affected directory is ours.
+  // The subscription is registered once; a ref carries the current state in
+  // so progress-driven re-renders don't churn listeners.
+  const fsState = useRef({ source, here: path, reload: nav.reload });
+  fsState.current = { source, here: nav.listing?.path ?? path, reload: nav.reload };
+
+  useEffect(() => {
+    return on<FsChanged>("fs:changed", (ev) => {
+      const { source: src, here, reload } = fsState.current;
+      const mine = ev.source === "local" ? src === "local" : src === ev.siteId;
+      if (!mine || !here || !ev.dir) return;
+      // Compare paths, not strings: the two sides can disagree on separator
+      // style and trailing slashes, and Windows paths are case-insensitive.
+      const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+      if (norm(here) === norm(ev.dir)) reload();
+    });
+  }, []);
+
+  const sep = (p: string) => (p.includes("\\") ? "\\" : "/");
+  const joinHere = useCallback(
+    (name: string) => {
+      const base = nav.listing?.path ?? path;
+      const s = sep(base);
+      return (base.endsWith(s) ? base : base + s) + name;
+    },
+    [nav.listing, path],
+  );
+
+  const selection = useCallback((): FsEntry[] => {
+    if (marks.size) return entries.filter((e) => marks.has(e.name));
+    return entries[cursor] ? [entries[cursor]] : [];
+  }, [marks, entries, cursor]);
+
+  const doDelete = useCallback(
+    (items: FsEntry[]) => {
+      if (items.length === 0) return;
+      const names = items.length === 1 ? `“${items[0].name}”` : `${items.length} items`;
+      setPrompt({
+        title: `Delete ${names}?`,
+        body: items.some((e) => e.isDir)
+          ? "Folders are deleted with everything inside them. This cannot be undone."
+          : "This cannot be undone.",
+        confirmLabel: "Delete",
+        danger: true,
+        onConfirm: () => {
+          void deleteEntries(
+            source,
+            items.map((e) => joinHere(e.name)),
+            nav.listing?.path ?? path,
+          )
+            .then((n) => {
+              setMarks(new Set());
+              toast("success", `Deleted ${n} item${n === 1 ? "" : "s"}`);
+            })
+            .catch((err: unknown) => toast("error", String(err)))
+            .finally(() => nav.reload());
+        },
+      });
+    },
+    [source, joinHere, nav, path],
+  );
+
+  const doRename = useCallback(
+    (entry: FsEntry) => {
+      setPrompt({
+        title: "Rename",
+        initialValue: entry.name,
+        confirmLabel: "Rename",
+        onConfirm: (name) => {
+          if (!name || name === entry.name) return;
+          void renameEntry(source, joinHere(entry.name), name, nav.listing?.path ?? path)
+            .catch((err: unknown) => toast("error", String(err)))
+            .finally(() => nav.reload());
+        },
+      });
+    },
+    [source, joinHere, nav, path],
+  );
+
+  const doMkdir = useCallback(() => {
+    setPrompt({
+      title: "New folder",
+      initialValue: "",
+      confirmLabel: "Create",
+      onConfirm: (name) => {
+        if (!name) return;
+        void makeDir(source, nav.listing?.path ?? path, name)
+          .catch((err: unknown) => toast("error", String(err)))
+          .finally(() => nav.reload());
+      },
+    });
+  }, [source, nav, path]);
+
   // Commands from the palette / global shortcuts.
   useEffect(() => {
     const handler = (ev: Event) => {
@@ -193,10 +310,16 @@ export default function FilePane({ side }: { side: PaneSide }) {
       else if (cmd === "invert") invertMarks();
       else if (cmd === "clearmarks") setMarks(new Set());
       else if (cmd === "reload") nav.reload();
+      else if (cmd === "mkdir") doMkdir();
+      else if (cmd === "rename") {
+        const sel = selection();
+        if (sel.length === 1) doRename(sel[0]);
+        else toast("error", "Select exactly one item to rename");
+      } else if (cmd === "delete") doDelete(selection());
     };
     window.addEventListener("ws:panecmd", handler);
     return () => window.removeEventListener("ws:panecmd", handler);
-  }, [side, nav, invertMarks]);
+  }, [side, nav, invertMarks, doMkdir, doRename, doDelete, selection]);
 
   // Active-pane shortcuts that must work outside the list focus.
   useEffect(() => {
@@ -221,18 +344,36 @@ export default function FilePane({ side }: { side: PaneSide }) {
         nav.up();
       } else if (e.key === "F5") {
         e.preventDefault(); // F5 transfers — never reloads the webview
-        const sel = marks.size
-          ? entries.filter((x) => marks.has(x.name))
-          : entries[cursor]
-            ? [entries[cursor]]
-            : [];
-        if (typeof source === "number") void enqueueItems(sel);
-        else void uploadItems(sel);
+        if (typeof source === "number") void enqueueItems(selection());
+        else void uploadItems(selection());
+      } else if (e.ctrlKey && e.key.toLowerCase() === "r") {
+        e.preventDefault(); // never let the webview reload itself
+        nav.reload();
+      } else if (e.key === "F2" && !inField) {
+        e.preventDefault();
+        const sel = selection();
+        if (sel.length === 1) doRename(sel[0]);
+      } else if (e.key === "F7" && !inField) {
+        e.preventDefault();
+        doMkdir();
+      } else if ((e.key === "Delete" || e.key === "F8") && !inField) {
+        e.preventDefault();
+        doDelete(selection());
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [isActive, nav, marks, entries, cursor, source, enqueueItems, uploadItems]);
+  }, [
+    isActive,
+    nav,
+    source,
+    enqueueItems,
+    uploadItems,
+    selection,
+    doRename,
+    doMkdir,
+    doDelete,
+  ]);
 
   // Right-click menu items for the entry under the pointer (acting on the
   // full mark set when the entry is part of it).
@@ -261,14 +402,23 @@ export default function FilePane({ side }: { side: PaneSide }) {
       items.push({ label: "Open", hint: "Enter", run: () => open(entry) });
     }
     items.push({
+      label: "Rename…",
+      hint: "F2",
+      disabled: sel.length !== 1,
+      run: () => doRename(entry),
+    });
+    items.push({ label: "New folder…", hint: "F7", run: doMkdir });
+    items.push({
       label: "Copy path",
-      run: () => {
-        const p = nav.listing?.path ?? "";
-        const sep = p.includes("\\") ? "\\" : "/";
-        void navigator.clipboard.writeText((p.endsWith(sep) ? p : p + sep) + entry.name);
-      },
+      run: () => void navigator.clipboard.writeText(joinHere(entry.name)),
     });
     items.push({ label: "Refresh", hint: "Ctrl+R", run: nav.reload });
+    items.push({
+      label: `Delete${count}`,
+      hint: "Del",
+      danger: true,
+      run: () => doDelete(sel),
+    });
     return items;
   };
 
@@ -408,6 +558,9 @@ export default function FilePane({ side }: { side: PaneSide }) {
         >
           ↑
         </button>
+        <button className="pane__btn" onClick={nav.reload} title="Refresh (Ctrl+R)">
+          ↻
+        </button>
         <Breadcrumb path={nav.listing?.path ?? path} onNavigate={nav.navigate} editReq={editReq} />
       </header>
 
@@ -518,6 +671,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} items={buildMenu(menu.entry)} onClose={() => setMenu(null)} />
       )}
+      <PromptDialog spec={prompt} onClose={() => setPrompt(null)} />
 
       <footer className="pane__status">
         <span>{all.length} items</span>

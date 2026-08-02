@@ -126,6 +126,25 @@
   margin-top: var(--sp-4);
 }
 
+/* confirm / text prompt */
+.dialog--prompt {
+  width: 400px;
+}
+.prompt__input {
+  width: 100%;
+  height: 32px;
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 0 var(--sp-3);
+  font-family: var(--font-data);
+  font-size: var(--text-sm);
+}
+.prompt__input:focus-visible {
+  outline: none;
+  border-color: var(--accent-dim);
+}
+
 /* forms (quick connect) */
 .form-grid {
   display: grid;

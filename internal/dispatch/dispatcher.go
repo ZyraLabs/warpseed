@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -270,6 +272,15 @@ func (d *Dispatcher) streamsFor(t queue.Transfer, siteCap int) int {
 	return streams
 }
 
+// parentDir returns the containing directory of a transfer destination,
+// using the separator convention of the side it lives on.
+func parentDir(dst string, remote bool) string {
+	if remote {
+		return path.Dir(dst)
+	}
+	return filepath.Dir(dst)
+}
+
 // removePart deletes a leftover partial file, ignoring absence.
 func removePart(path string) {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
@@ -490,6 +501,12 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 		}
 		d.sink.Emit("transfer:progress", map[string]any{"id": t.ID, "bytes": final, "size": t.Size})
 		d.emitState(t.ID, "completed", "")
+		// A finished transfer changes a directory someone may be looking at.
+		d.sink.Emit("fs:changed", map[string]any{
+			"source": map[bool]string{true: "remote", false: "local"}[t.Direction == "upload"],
+			"siteId": t.SiteID,
+			"dir":    parentDir(t.Dst, t.Direction == "upload"),
+		})
 		return
 	}
 	d.finishWithError(ctx, t, err)
