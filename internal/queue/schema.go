@@ -108,4 +108,10 @@ var migrations = []string{
 	);
 	INSERT OR IGNORE INTO settings(key,value) VALUES ('ui.local_default','');
 	`,
+
+	// 006 — named themes replace the plain dark/light pair.
+	`
+	UPDATE settings SET value='flightdeck' WHERE key='ui.theme' AND value='dark';
+	UPDATE settings SET value='drafting'   WHERE key='ui.theme' AND value='light';
+	`,
 }

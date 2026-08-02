@@ -162,12 +162,85 @@
 .pane__scroll:focus-visible {
   box-shadow: inset 0 0 0 1px var(--accent-dim), inset 0 0 0 3px var(--accent-glow);
 }
+/* list = header + scroller; the header is outside the scroller so it stays
+   put while 100k rows go past underneath it. */
+.pane__list {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+.row--head {
+  position: static;
+  height: 22px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--border);
+  padding: 0;
+  color: var(--text-faint);
+}
+.row--head:hover {
+  background: var(--surface-2);
+}
+.row--head::after {
+  content: none;
+}
+.phead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 100%;
+  padding: 0 var(--sp-3);
+  border: none;
+  background: none;
+  color: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.phead:hover {
+  color: var(--text-mid);
+}
+.phead--on {
+  color: var(--accent);
+}
+.phead--num {
+  justify-content: flex-end;
+}
+.phead__dir {
+  font-size: 9px;
+}
+.phead__grip {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: calc(var(--sp-2) / -2);
+  width: 8px;
+  cursor: col-resize;
+}
+.phead__grip::after {
+  content: "";
+  position: absolute;
+  inset: 3px auto 3px 3px;
+  width: 1px;
+  background: var(--border-strong);
+  opacity: 0;
+  transition: opacity var(--dur-instant);
+}
+.phead__grip:hover::after {
+  opacity: 1;
+}
+
 .row {
   position: absolute;
   inset-inline: 0;
   height: var(--row-h);
   display: grid;
-  grid-template-columns: 1fr 88px 118px;
+  grid-template-columns: 1fr var(--col-psize, 84px) var(--col-pdate, 112px);
   gap: var(--sp-2);
   align-items: center;
   padding: 0 var(--sp-3);

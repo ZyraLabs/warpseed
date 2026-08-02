@@ -35,8 +35,8 @@ export default function App() {
     void import("./ipc").then(({ getSettings }) =>
       getSettings()
         .then(async (cfg) => {
-          const pref = cfg["ui.theme"] as ThemePref;
-          if (pref === "dark" || pref === "light" || pref === "system") applyTheme(pref);
+          // applyTheme coerces legacy and unknown values itself.
+          if (cfg["ui.theme"]) applyTheme(cfg["ui.theme"] as ThemePref);
 
           const start = await localStart(cfg["ui.local_default"]);
           setPane(0, "local", start);

@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
 import { usePaneNav } from "../hooks/usePaneNav";
+import { sortEntries, usePaneSort, type SortKey } from "../hooks/usePaneSort";
 import {
   addBookmark,
   bookmarksFor,
@@ -44,6 +46,15 @@ function toast(kind: "info" | "error" | "success", text: string) {
 /** Bound on how often a pane re-lists in response to filesystem events. */
 const FS_REFRESH_COALESCE_MS = 500;
 
+/** Size and date are resizable; the name column takes what is left, so
+    narrowing these two is how you give a long filename more room. */
+const PANE_COLUMNS: ColumnSpec[] = [
+  { id: "psize", label: "Size", min: 48, initial: 84 },
+  { id: "pdate", label: "Modified", min: 60, initial: 112 },
+];
+
+const SORT_LABEL: Record<SortKey, string> = { name: "Name", size: "Size", modTime: "Modified" };
+
 export interface PaneCmd {
   side: PaneSide;
   cmd:
@@ -80,6 +91,8 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const setQuickConnect = useUiStore((s) => s.setQuickConnect);
 
   const nav = usePaneNav(side);
+  const { sort, toggle: toggleSort } = usePaneSort();
+  const { style: colStyle, startResize } = useColumnWidths(PANE_COLUMNS, "ws-pane-columns");
   const [cursor, setCursor] = useState(0);
   const [marks, setMarks] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<string | null>(null);
@@ -94,10 +107,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const filterRef = useRef<HTMLInputElement>(null);
 
   const all = nav.listing?.entries ?? [];
-  const entries = useMemo(
-    () => (filter ? all.filter((e) => matches(e.name, filter)) : all),
-    [all, filter],
-  );
+  const entries = useMemo(() => {
+    const visible = filter ? all.filter((e) => matches(e.name, filter)) : all;
+    return sortEntries(visible, sort);
+  }, [all, filter, sort]);
 
   // Reset selection state on navigation.
   useEffect(() => {
@@ -800,6 +813,42 @@ export default function FilePane({ side }: { side: PaneSide }) {
           <div>{filter ? "Esc to clear" : ""}</div>
         </div>
       ) : (
+        <div className="pane__list" style={colStyle}>
+          {/* Sortable, resizable headings: click to sort, drag the divider
+              beside Size or Modified to give the name column more room. */}
+          <div className="row row--head" role="row">
+            <button
+              className={`phead ${sort.key === "name" ? "phead--on" : ""}`}
+              onClick={() => toggleSort("name")}
+              title="Sort by name"
+            >
+              {SORT_LABEL.name}
+              {sort.key === "name" && <span className="phead__dir">{sort.desc ? "▾" : "▴"}</span>}
+            </button>
+            {PANE_COLUMNS.map((c) => {
+              const key: SortKey = c.id === "psize" ? "size" : "modTime";
+              return (
+                <button
+                  key={c.id}
+                  className={`phead phead--num ${sort.key === key ? "phead--on" : ""}`}
+                  onClick={() => toggleSort(key)}
+                  title={`Sort by ${c.label.toLowerCase()}`}
+                >
+                  {sort.key === key && <span className="phead__dir">{sort.desc ? "▾" : "▴"}</span>}
+                  {c.label}
+                  <span
+                    className="phead__grip"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={`Resize ${c.label}`}
+                    onMouseDown={(e) => startResize(c.id, e)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </button>
+              );
+            })}
+          </div>
+
         <div className="pane__scroll" ref={scrollRef} tabIndex={0} onKeyDown={onListKeyDown} role="grid">
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
@@ -841,6 +890,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
               );
             })}
           </div>
+        </div>
         </div>
       )}
         </div>

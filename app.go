@@ -786,7 +786,9 @@ var settingValidators = map[string]func(string) error{
 	"bw.limit_bytes":          intRange(0, 1<<40),
 	"bw.percent":              intRange(10, 95),
 	"bw.mode":                 oneOf("off", "fixed", "percent"),
-	"ui.theme":                oneOf("dark", "light", "system"),
+	// "dark"/"light" are the pre-v3 names, still accepted so an existing
+	// setting keeps working; the frontend maps them to the new themes.
+	"ui.theme": oneOf("flightdeck", "drafting", "press", "nightshift", "system", "dark", "light"),
 	"ui.local_default":        anyString,          // the folder local panes open in
 	"transfers.chunk_min_mb":  intRange(0, 1<<20), // 0 disables chunking
 	"transfers.chunk_streams": intRange(1, 16),

@@ -9,7 +9,7 @@ import {
 } from "../ipc";
 import { formatSize } from "../lib/format";
 import { forgetSource } from "../lib/recents";
-import { applyTheme, type ThemePref } from "../lib/theme";
+import { applyTheme, THEMES, type ThemePref } from "../lib/theme";
 import { useUiStore } from "../store";
 
 const MIB = 1024 * 1024;
@@ -71,7 +71,9 @@ export default function SettingsDialog() {
     });
   };
 
-  const theme = (cfg["ui.theme"] as ThemePref) || "dark";
+  const stored = cfg["ui.theme"];
+  const theme: ThemePref =
+    stored === "dark" ? "flightdeck" : stored === "light" ? "drafting" : ((stored as ThemePref) || "flightdeck");
   const bwMode = cfg["bw.mode"] || "off";
   const observedMax = Number(cfg["bw.observed_max"] || 0);
 
@@ -142,19 +144,28 @@ export default function SettingsDialog() {
 
         <section className="set-section">
           <h3>Appearance</h3>
-          <div className="segmented" role="radiogroup" aria-label="Theme">
-            {(["dark", "light", "system"] as ThemePref[]).map((t) => (
+          <div className="themes" role="radiogroup" aria-label="Theme">
+            {THEMES.map((t) => (
               <button
-                key={t}
-                className={theme === t ? "seg--on" : ""}
+                key={t.id}
+                className={`theme-card ${theme === t.id ? "theme-card--on" : ""}`}
                 role="radio"
-                aria-checked={theme === t}
-                onClick={() => pickTheme(t)}
+                aria-checked={theme === t.id}
+                onClick={() => pickTheme(t.id)}
               >
-                {t[0].toUpperCase() + t.slice(1)}
+                <span className="theme-card__swatch" aria-hidden>
+                  {t.swatch.map((c) => (
+                    <span key={c} style={{ background: c }} />
+                  ))}
+                </span>
+                <span className="theme-card__name">{t.name}</span>
+                <span className="theme-card__blurb">{t.blurb}</span>
               </button>
             ))}
           </div>
+          <p className="set-note">
+            Each theme carries its own palette, type pairing and row density.
+          </p>
         </section>
 
         <section className="set-section">

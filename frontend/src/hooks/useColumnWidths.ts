@@ -4,8 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
    restarts. Widths are applied through CSS custom properties, so dragging
    never re-renders the virtualized rows underneath. */
 
-const KEY = "ws-queue-columns";
-
 export interface ColumnSpec {
   id: string;
   label: string;
@@ -13,7 +11,10 @@ export interface ColumnSpec {
   initial: number;
 }
 
-export function useColumnWidths(columns: ColumnSpec[]) {
+/** storageKey scopes the saved layout, so the queue and the file panes each
+    remember their own column widths. */
+export function useColumnWidths(columns: ColumnSpec[], storageKey: string) {
+  const KEY = storageKey;
   const defaults = () =>
     Object.fromEntries(columns.map((c) => [c.id, c.initial])) as Record<string, number>;
 

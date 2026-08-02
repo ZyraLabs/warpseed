@@ -1,117 +1,197 @@
-/* warpseed design tokens v2.1 — ux-spec §6 + design-agent theme pass.
-   Dark is the identity and the no-attribute fallback; light activates via
-   [data-theme="light"] on <html>. All values contrast-verified. */
-:root {
+/* warpseed design tokens v3 — four named themes, each a complete world:
+   palette, type pairing AND density. A theme is selected by stamping
+   data-theme on <html>; Flight Deck is also the no-attribute fallback.
+   Only tokens are redefined per theme — components never name a theme. */
+
+:root,
+[data-theme="flightdeck"] {
   color-scheme: dark;
 
-  /* surfaces — 5 layers, hue 260, chroma rises slightly with elevation */
+  /* FLIGHT DECK — cockpit instrument. Cold slate, one teal, tightest grid. */
   --surface-0: oklch(15% 0.014 260);
   --surface-1: oklch(20% 0.014 260);
   --surface-2: oklch(24% 0.016 260);
   --surface-3: oklch(29% 0.018 260);
   --surface-4: oklch(34% 0.02 260);
 
-  /* text tiers */
   --text: oklch(92% 0.006 250);
   --text-mid: oklch(74% 0.012 250);
   --text-dim: oklch(62% 0.014 250);
   --text-faint: oklch(50% 0.012 250);
 
-  /* accent */
   --accent: oklch(78% 0.14 190);
   --accent-dim: oklch(63% 0.11 190);
   --accent-glow: oklch(78% 0.14 190 / 0.18);
 
-  /* semantic transfer states — never decorative */
-  --state-active: var(--accent);
   --state-done: oklch(72% 0.15 150);
   --state-paused: oklch(78% 0.13 85);
   --state-error: oklch(66% 0.19 25);
-  --state-queued: var(--text-dim);
-
-  /* protocol badges */
-  --proto-sftp: var(--accent);
-  --proto-ftp: oklch(75% 0.12 85);
-  --proto-s3: oklch(72% 0.14 55);
-  --proto-webdav: oklch(70% 0.12 300);
 
   --border: oklch(29% 0.014 260);
   --border-strong: oklch(41% 0.02 260);
   --scrim: oklch(8% 0.02 260 / 0.55);
+  --shadow-1: 0 8px 24px oklch(10% 0.03 260 / 0.5);
+  --shadow-2: 0 16px 48px oklch(8% 0.03 260 / 0.55);
 
-  /* typography — Segoe UI Variable is native on Win11 */
-  --font-ui: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-ui: "Bahnschrift", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
   --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
 
-  --text-2xs: 0.6875rem; /* chips, badges */
-  --text-xs: 0.75rem;    /* secondary columns, footers */
-  --text-sm: 0.8125rem;  /* listing rows, default UI */
-  --text-md: 0.875rem;   /* inputs, buttons */
-  --text-lg: 1rem;       /* dialog titles */
-  --text-xl: 1.25rem;    /* alarm titles only */
+  --row-h: 24px;
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --label-tracking: 0.1em;
+}
 
-  /* 4px spacing grid */
+/* DRAFTING TABLE — engineering drawing. Cool paper, navy ink, vermilion
+   only for things actually moving. The answer to "I don't love dark". */
+[data-theme="drafting"] {
+  color-scheme: light;
+
+  --surface-0: oklch(91.5% 0.008 250);
+  --surface-1: oklch(98.5% 0.003 250);
+  --surface-2: oklch(95% 0.006 250);
+  --surface-3: oklch(90% 0.011 250);
+  --surface-4: oklch(99.5% 0.002 250);
+
+  --text: oklch(26% 0.035 255);
+  --text-mid: oklch(42% 0.03 255);
+  --text-dim: oklch(53% 0.025 255);
+  --text-faint: oklch(66% 0.02 255);
+
+  --accent: oklch(52% 0.16 35);
+  --accent-dim: oklch(62% 0.13 35);
+  --accent-glow: oklch(58% 0.16 35 / 0.12);
+
+  --state-done: oklch(46% 0.11 165);
+  --state-paused: oklch(52% 0.11 75);
+  --state-error: oklch(48% 0.19 27);
+
+  --border: oklch(83% 0.014 250);
+  --border-strong: oklch(70% 0.02 250);
+  --scrim: oklch(45% 0.03 255 / 0.3);
+  --shadow-1: 0 4px 16px oklch(35% 0.03 255 / 0.14), 0 1px 3px oklch(35% 0.03 255 / 0.1);
+  --shadow-2: 0 12px 32px oklch(35% 0.03 255 / 0.18), 0 2px 6px oklch(35% 0.03 255 / 0.1);
+
+  --font-ui: "Corbel", "Gill Sans MT", "Segoe UI", system-ui, sans-serif;
+  --font-data: "Consolas", "Cascadia Mono", ui-monospace, monospace;
+
+  --row-h: 26px;
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --label-tracking: 0.08em;
+}
+
+/* PRESS — utilitarian and loud about it. Bone paper, black rules, zero
+   rounding, one industrial orange. Nothing decorative survives. */
+[data-theme="press"] {
+  color-scheme: light;
+
+  --surface-0: oklch(92% 0.006 95);
+  --surface-1: oklch(97% 0.004 95);
+  --surface-2: oklch(93.5% 0.006 95);
+  --surface-3: oklch(88% 0.01 95);
+  --surface-4: oklch(99% 0.002 95);
+
+  --text: oklch(18% 0 0);
+  --text-mid: oklch(32% 0.004 95);
+  --text-dim: oklch(48% 0.006 95);
+  --text-faint: oklch(62% 0.008 95);
+
+  --accent: oklch(62% 0.21 45);
+  --accent-dim: oklch(55% 0.19 45);
+  --accent-glow: oklch(72% 0.17 55 / 0.3);
+
+  --state-done: oklch(45% 0.14 150);
+  --state-paused: oklch(58% 0.15 75);
+  --state-error: oklch(50% 0.22 28);
+
+  --border: oklch(18% 0 0);
+  --border-strong: oklch(18% 0 0);
+  --scrim: oklch(18% 0 0 / 0.35);
+  --shadow-1: 4px 4px 0 oklch(18% 0 0 / 0.16);
+  --shadow-2: 8px 8px 0 oklch(18% 0 0 / 0.2);
+
+  --font-ui: "Franklin Gothic Medium", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
+  --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --row-h: 27px;
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --label-tracking: 0.12em;
+}
+
+/* NIGHTSHIFT — warm dark. Near-black with brown in it, amber where teal
+   usually goes, a serif for the chrome. A mastering desk, not a terminal. */
+[data-theme="nightshift"] {
+  color-scheme: dark;
+
+  --surface-0: oklch(16% 0.012 60);
+  --surface-1: oklch(21% 0.014 55);
+  --surface-2: oklch(25% 0.016 55);
+  --surface-3: oklch(30% 0.018 52);
+  --surface-4: oklch(35% 0.02 50);
+
+  --text: oklch(92% 0.018 75);
+  --text-mid: oklch(76% 0.026 70);
+  --text-dim: oklch(63% 0.03 65);
+  --text-faint: oklch(51% 0.028 62);
+
+  --accent: oklch(78% 0.13 75);
+  --accent-dim: oklch(64% 0.11 70);
+  --accent-glow: oklch(78% 0.13 75 / 0.16);
+
+  --state-done: oklch(76% 0.13 140);
+  --state-paused: oklch(72% 0.12 55);
+  --state-error: oklch(66% 0.18 28);
+
+  --border: oklch(30% 0.018 55);
+  --border-strong: oklch(42% 0.022 55);
+  --scrim: oklch(10% 0.015 55 / 0.6);
+  --shadow-1: 0 10px 28px oklch(8% 0.02 55 / 0.55);
+  --shadow-2: 0 18px 44px oklch(6% 0.02 55 / 0.6);
+
+  --font-ui: "Constantia", "Sitka Text", Georgia, serif;
+  --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --row-h: 29px;
+  --radius-xs: 4px;
+  --radius-sm: 7px;
+  --radius-md: 11px;
+  --radius-lg: 15px;
+  --label-tracking: 0.06em;
+}
+
+/* ── tokens shared by every theme ─────────────────────────────────── */
+:root {
+  /* transfer states read from the palette above; active is always the accent */
+  --state-active: var(--accent);
+  --state-queued: var(--text-dim);
+
+  --proto-sftp: var(--accent);
+  --proto-ftp: oklch(70% 0.12 85);
+  --proto-s3: oklch(68% 0.14 55);
+  --proto-webdav: oklch(66% 0.12 300);
+
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-md: 0.875rem;
+  --text-lg: 1rem;
+  --text-xl: 1.25rem;
+
   --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
 
-  --radius-xs: 3px;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-
-  --row-h: 26px;
-
-  /* motion — transform/opacity only */
   --dur-instant: 80ms;
   --dur-fast: 120ms;
   --dur-normal: 180ms;
   --dur-slow: 240ms;
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in: cubic-bezier(0.7, 0, 0.84, 0);
-
-  /* hue-tinted shadows sit in the palette; pure black reads pasted-on */
-  --shadow-1: 0 8px 24px oklch(10% 0.03 260 / 0.5);
-  --shadow-2: 0 16px 48px oklch(8% 0.03 260 / 0.55);
-}
-
-/* Light theme — "the same instrument with the backlight off": bright slate,
-   deep teal ink, recessed wells. Elevation is deliberately non-monotonic:
-   surface-0 recesses, surface-3 dips darker for hover, surface-4 lifts to
-   paper for dialogs. All text tiers ≥4.5:1 except --text-faint (by contract). */
-[data-theme="light"] {
-  color-scheme: light;
-
-  --surface-0: oklch(94.5% 0.006 260); /* app frame, wells, progress tracks */
-  --surface-1: oklch(97.5% 0.004 260); /* pane listing */
-  --surface-2: oklch(95.5% 0.006 260); /* toolbars, path bars, footers */
-  --surface-3: oklch(92% 0.008 260);   /* hover, popovers, palette */
-  --surface-4: oklch(99.3% 0.002 260); /* dialogs — lifts to white */
-
-  --text: oklch(22% 0.012 250);
-  --text-mid: oklch(37% 0.014 250);
-  --text-dim: oklch(45% 0.015 250);
-  --text-faint: oklch(62% 0.012 250);
-
-  --accent: oklch(48% 0.105 190);      /* warp teal at ink weight */
-  --accent-dim: oklch(60% 0.09 190);
-  --accent-glow: oklch(60% 0.12 190 / 0.14);
-
-  --state-active: var(--accent);
-  --state-done: oklch(46% 0.13 150);
-  --state-paused: oklch(52% 0.11 85);  /* amber becomes ochre ink */
-  --state-error: oklch(48% 0.18 25);
-  --state-queued: var(--text-dim);
-
-  --proto-sftp: var(--accent);
-  --proto-ftp: oklch(50% 0.10 85);
-  --proto-s3: oklch(50% 0.12 55);
-  --proto-webdav: oklch(46% 0.12 300);
-
-  --border: oklch(86% 0.008 260);
-  --border-strong: oklch(76% 0.012 260);
-  --scrim: oklch(40% 0.02 260 / 0.32);
-
-  /* light needs tighter, softer, hue-tinted shadows: ambient + keyline */
-  --shadow-1: 0 4px 16px oklch(30% 0.02 260 / 0.14), 0 1px 3px oklch(30% 0.02 260 / 0.10);
-  --shadow-2: 0 12px 32px oklch(30% 0.02 260 / 0.18), 0 2px 6px oklch(30% 0.02 260 / 0.10);
 }
