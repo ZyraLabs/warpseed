@@ -1,8 +1,11 @@
-# update.ps1 — pull the latest warpseed and rebuild (run from anywhere).
-# Usage:  & C:\Users\Dave\warpseed\update.ps1            # update, build, launch
-#         & C:\Users\Dave\warpseed\update.ps1 -NoLaunch  # update + build only
+# update.ps1 — pull the latest warpseed and build it (run from anywhere).
+# The build machine is not necessarily the machine that runs the app, so
+# this only builds; pass -Run when you do want it launched afterwards.
+#
+# Usage:  & C:\Users\Dave\warpseed\update.ps1        # update + build
+#         & C:\Users\Dave\warpseed\update.ps1 -Run   # ... and launch it
 param(
-    [switch]$NoLaunch
+    [switch]$Run
 )
 
 $ErrorActionPreference = "Stop"
@@ -26,7 +29,7 @@ try {
     $exe = Join-Path $repo "build\bin\warpseed.exe"
     Write-Host "Built: $exe" -ForegroundColor Green
 
-    if (-not $NoLaunch) {
+    if ($Run) {
         Start-Process $exe
     }
 }
