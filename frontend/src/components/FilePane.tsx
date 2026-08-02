@@ -24,6 +24,9 @@ function toast(kind: "info" | "error" | "success", text: string) {
   window.dispatchEvent(new CustomEvent("ws:toast", { detail: { kind, text } }));
 }
 
+/** Bound on how often a pane re-lists in response to filesystem events. */
+const FS_REFRESH_COALESCE_MS = 500;
+
 export interface PaneCmd {
   side: PaneSide;
   cmd:
@@ -213,15 +216,35 @@ export default function FilePane({ side }: { side: PaneSide }) {
   fsState.current = { source, here: nav.listing?.path ?? path, reload: nav.reload };
 
   useEffect(() => {
-    return on<FsChanged>("fs:changed", (ev) => {
-      const { source: src, here, reload } = fsState.current;
+    let timer: number | undefined;
+    const off = on<FsChanged>("fs:changed", (ev) => {
+      const { source: src, here } = fsState.current;
       const mine = ev.source === "local" ? src === "local" : src === ev.siteId;
       if (!mine || !here || !ev.dir) return;
+
       // Compare paths, not strings: the two sides can disagree on separator
       // style and trailing slashes, and Windows paths are case-insensitive.
       const norm = (p: string) => p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-      if (norm(here) === norm(ev.dir)) reload();
+      const shown = norm(here);
+      const changed = norm(ev.dir);
+      // Also match changes BELOW this directory: a folder transfer writes
+      // into a new subtree, and the pane showing the parent is exactly where
+      // the user is waiting for that folder to appear.
+      if (changed !== shown && !changed.startsWith(shown + "/")) return;
+
+      // Coalesce: a folder transfer completes one file at a time, and every
+      // reload is a real listing round trip — on a remote pane they queue on
+      // the single browse connection and would stall navigation.
+      if (timer !== undefined) return;
+      timer = window.setTimeout(() => {
+        timer = undefined;
+        fsState.current.reload();
+      }, FS_REFRESH_COALESCE_MS);
     });
+    return () => {
+      off();
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, []);
 
   const sep = (p: string) => (p.includes("\\") ? "\\" : "/");
