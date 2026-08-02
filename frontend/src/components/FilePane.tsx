@@ -304,6 +304,31 @@ export default function FilePane({ side }: { side: PaneSide }) {
     return entries[cursor] ? [entries[cursor]] : [];
   }, [marks, entries, cursor]);
 
+  // Explorer mouse selection: a plain click REPLACES the selection with that
+  // one row (previously it only moved the cursor, so "click A, ctrl+click B"
+  // left A unselected and acted on B alone), Ctrl adds/removes, Shift takes
+  // the range from the anchor. Insert/Space keep the commander behaviour.
+  const anchor = useRef(0);
+  const selectAt = useCallback(
+    (index: number, ev: React.MouseEvent) => {
+      const entry = entries[index];
+      if (!entry) return;
+      setCursor(index);
+      if (ev.shiftKey) {
+        const [lo, hi] = index < anchor.current ? [index, anchor.current] : [anchor.current, index];
+        setMarks(new Set(entries.slice(lo, hi + 1).map((x) => x.name)));
+        return;
+      }
+      anchor.current = index;
+      if (ev.ctrlKey || ev.metaKey) {
+        toggleMark(entry.name);
+      } else {
+        setMarks(new Set([entry.name]));
+      }
+    },
+    [entries, toggleMark],
+  );
+
   const doDelete = useCallback(
     (items: FsEntry[]) => {
       if (items.length === 0) return;
@@ -792,15 +817,15 @@ export default function FilePane({ side }: { side: PaneSide }) {
                   key={vi.key}
                   className={cls}
                   style={{ transform: `translateY(${vi.start}px)` }}
-                  onClick={(ev) => {
-                    if (ev.ctrlKey) toggleMark(e.name);
-                    setCursor(vi.index);
-                  }}
+                  onClick={(ev) => selectAt(vi.index, ev)}
                   onDoubleClick={() => open(e)}
                   onContextMenu={(ev) => {
                     ev.preventDefault();
                     setActivePane(side);
                     setCursor(vi.index);
+                    // Right-clicking outside the current selection targets
+                    // just that row, as every file manager does.
+                    if (marks.size && !marks.has(e.name)) setMarks(new Set([e.name]));
                     setMenu({ x: ev.clientX, y: ev.clientY, entry: e });
                   }}
                   role="row"
