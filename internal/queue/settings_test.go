@@ -13,8 +13,10 @@ func TestSettingsDefaultsSeededByMigration(t *testing.T) {
 	if got := s.Setting("bw.mode", ""); got != "off" {
 		t.Fatalf("bw.mode = %q, want off", got)
 	}
-	if got := s.Setting("ui.theme", ""); got != "dark" {
-		t.Fatalf("ui.theme = %q, want dark", got)
+	// Migration 006 renamed the themes; a fresh database lands on the
+	// current default rather than the retired "dark".
+	if got := s.Setting("ui.theme", ""); got != "flightdeck" {
+		t.Fatalf("ui.theme = %q, want flightdeck", got)
 	}
 }
 
