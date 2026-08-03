@@ -132,6 +132,22 @@ export namespace localfs {
 
 export namespace main {
 	
+	export class DataInfo {
+	    path: string;
+	    folder: string;
+	    backups: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new DataInfo(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.path = source["path"];
+	        this.folder = source["folder"];
+	        this.backups = source["backups"];
+	    }
+	}
 	export class DownloadItem {
 	    src: string;
 	    size: number;

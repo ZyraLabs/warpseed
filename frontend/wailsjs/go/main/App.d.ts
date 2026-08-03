@@ -7,6 +7,8 @@ import {core} from '../models';
 
 export function AddBookmark(arg1:number,arg2:string,arg3:string):Promise<void>;
 
+export function BackupData():Promise<string>;
+
 export function BookmarksFor(arg1:number):Promise<Array<queue.Bookmark>>;
 
 export function CancelTransfer(arg1:number):Promise<void>;
@@ -14,6 +16,8 @@ export function CancelTransfer(arg1:number):Promise<void>;
 export function ClearDoneTransfers():Promise<void>;
 
 export function ConnectSite(arg1:number):Promise<void>;
+
+export function DataLocation():Promise<main.DataInfo>;
 
 export function DeleteBookmark(arg1:number):Promise<void>;
 
@@ -44,6 +48,8 @@ export function MkdirLocal(arg1:string,arg2:string):Promise<void>;
 export function MkdirRemote(arg1:number,arg2:string,arg3:string):Promise<void>;
 
 export function MoveLocal(arg1:Array<string>,arg2:string,arg3:string):Promise<number>;
+
+export function OpenDataFolder():Promise<void>;
 
 export function PauseTransfer(arg1:number):Promise<void>;
 

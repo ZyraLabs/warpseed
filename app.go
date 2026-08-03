@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -775,21 +776,78 @@ func (a *App) SetSiteRemotePath(siteID int64, path string) error {
 	return nil
 }
 
+// --- Data bindings (where settings live, and backing them up) ---
+
+// DataInfo describes the settings store for the Data section of Settings.
+type DataInfo struct {
+	Path    string   `json:"path"`
+	Folder  string   `json:"folder"`
+	Backups []string `json:"backups"`
+}
+
+// DataLocation reports where settings are kept and what snapshots exist.
+func (a *App) DataLocation() (DataInfo, error) {
+	if a.store == nil {
+		return DataInfo{}, errNoStore
+	}
+	p, err := a.store.Path()
+	if err != nil {
+		return DataInfo{}, err
+	}
+	backups, err := a.store.Backups()
+	if err != nil {
+		return DataInfo{}, err
+	}
+	return DataInfo{Path: p, Folder: filepath.Dir(p), Backups: backups}, nil
+}
+
+// BackupData snapshots the settings database and returns the new file name.
+func (a *App) BackupData() (string, error) {
+	if a.store == nil {
+		return "", errNoStore
+	}
+	dest, err := a.store.Backup(time.Now())
+	if err != nil {
+		return "", err
+	}
+	return filepath.Base(dest), nil
+}
+
+// OpenDataFolder reveals the settings folder in Explorer. Wails'
+// BrowserOpenURL refuses the file:// scheme, so this shells out instead —
+// and reports failure rather than looking like a dead button.
+func (a *App) OpenDataFolder() error {
+	info, err := a.DataLocation()
+	if err != nil {
+		return err
+	}
+	if err := openInFileManager(info.Folder); err != nil {
+		return fmt.Errorf("open %s: %w", info.Folder, err)
+	}
+	return nil
+}
+
 // --- Settings bindings ---
 
 // settingValidators allowlists the keys the frontend may write AND the
 // values it may write: a persisted 0 concurrency would stall the queue
 // forever, so bad values are rejected at the boundary, not absorbed.
 var settingValidators = map[string]func(string) error{
-	"transfers.global_max":    intRange(1, 16),
-	"transfers.site_max":      intRange(1, 8),
-	"bw.limit_bytes":          intRange(0, 1<<40),
-	"bw.percent":              intRange(10, 95),
-	"bw.mode":                 oneOf("off", "fixed", "percent"),
+	"transfers.global_max": intRange(1, 16),
+	"transfers.site_max":   intRange(1, 8),
+	"bw.limit_bytes":       intRange(0, 1<<40),
+	"bw.percent":           intRange(10, 95),
+	"bw.mode":              oneOf("off", "fixed", "percent"),
 	// "dark"/"light" are the pre-v3 names, still accepted so an existing
 	// setting keeps working; the frontend maps them to the new themes.
-	"ui.theme": oneOf("flightdeck", "drafting", "press", "nightshift", "system", "dark", "light"),
-	"ui.local_default":        anyString,          // the folder local panes open in
+	"ui.theme":         oneOf("flightdeck", "drafting", "press", "nightshift", "system", "dark", "light"),
+	"ui.local_default": anyString, // the folder local panes open in
+	// UI layout state lives here rather than in browser storage, so one
+	// backup of the database captures everything except credentials.
+	"ui.queue_columns":        jsonBlob,
+	"ui.pane_columns":         jsonBlob,
+	"ui.pane_sort":            jsonBlob,
+	"ui.recents":              jsonBlob,
 	"transfers.chunk_min_mb":  intRange(0, 1<<20), // 0 disables chunking
 	"transfers.chunk_streams": intRange(1, 16),
 }
@@ -810,6 +868,19 @@ func intRange(lo, hi int) func(string) error {
 // anyString accepts any value — used for free-form settings like a folder
 // path, which the filesystem validates when it is actually used.
 func anyString(string) error { return nil }
+
+// jsonBlob accepts UI state the frontend owns, bounded so a runaway writer
+// cannot bloat the settings table.
+func jsonBlob(v string) error {
+	const maxLen = 64 << 10
+	if len(v) > maxLen {
+		return fmt.Errorf("value is %d bytes, over the %d limit", len(v), maxLen)
+	}
+	if v != "" && !json.Valid([]byte(v)) {
+		return fmt.Errorf("value is not valid JSON")
+	}
+	return nil
+}
 
 func oneOf(allowed ...string) func(string) error {
 	return func(v string) error {

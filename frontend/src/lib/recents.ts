@@ -3,15 +3,16 @@
    and reading it must never wait on a backend round trip. */
 import type { PaneSource } from "../ipc";
 import { pathKey } from "./path";
+import { getPref, setPref } from "./prefs";
 
-const KEY = "ws-recent-paths";
+const KEY = "ui.recents" as const;
 const MAX_PER_SOURCE = 5;
 
 type Store = Record<string, string[]>;
 
 function read(): Store {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = getPref(KEY);
     return raw ? (JSON.parse(raw) as Store) : {};
   } catch {
     return {};
@@ -19,11 +20,7 @@ function read(): Store {
 }
 
 function write(store: Store) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(store));
-  } catch {
-    // A full or unavailable storage must never break navigation.
-  }
+  setPref(KEY, JSON.stringify(store));
 }
 
 const bucket = (source: PaneSource) => (source === "local" ? "local" : `site:${source}`);

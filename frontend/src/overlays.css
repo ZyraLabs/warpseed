@@ -338,6 +338,17 @@
   font-size: var(--text-2xs);
   color: var(--text-faint);
 }
+.set-path {
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  color: var(--text-mid);
+  background: var(--surface-0);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  padding: 3px var(--sp-2);
+  user-select: text;
+  overflow-wrap: anywhere;
+}
 .set-blurb {
   margin: calc(var(--sp-2) * -1) 0 var(--sp-3);
   line-height: 1.5;

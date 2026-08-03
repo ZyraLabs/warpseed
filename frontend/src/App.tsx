@@ -32,8 +32,8 @@ export default function App() {
     void fetchSites().then(setSites).catch(() => undefined);
     // Settings are the source of truth for the theme and the folder local
     // panes open in; both are read once at boot.
-    void import("./ipc").then(({ getSettings }) =>
-      getSettings()
+    void import("./lib/prefs").then(({ hydratePrefs }) =>
+      hydratePrefs()
         .then(async (cfg) => {
           // applyTheme coerces legacy and unknown values itself.
           if (cfg["ui.theme"]) applyTheme(cfg["ui.theme"] as ThemePref);

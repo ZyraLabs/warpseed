@@ -6,6 +6,10 @@ export function AddBookmark(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddBookmark'](arg1, arg2, arg3);
 }
 
+export function BackupData() {
+  return window['go']['main']['App']['BackupData']();
+}
+
 export function BookmarksFor(arg1) {
   return window['go']['main']['App']['BookmarksFor'](arg1);
 }
@@ -20,6 +24,10 @@ export function ClearDoneTransfers() {
 
 export function ConnectSite(arg1) {
   return window['go']['main']['App']['ConnectSite'](arg1);
+}
+
+export function DataLocation() {
+  return window['go']['main']['App']['DataLocation']();
 }
 
 export function DeleteBookmark(arg1) {
@@ -80,6 +88,10 @@ export function MkdirRemote(arg1, arg2, arg3) {
 
 export function MoveLocal(arg1, arg2, arg3) {
   return window['go']['main']['App']['MoveLocal'](arg1, arg2, arg3);
+}
+
+export function OpenDataFolder() {
+  return window['go']['main']['App']['OpenDataFolder']();
 }
 
 export function PauseTransfer(arg1) {

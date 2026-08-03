@@ -1,5 +1,6 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { FsEntry } from "../ipc";
+import { getPref, onPrefsHydrated, setPref } from "../lib/prefs";
 
 export type SortKey = "name" | "size" | "modTime";
 export interface SortState {
@@ -7,12 +8,12 @@ export interface SortState {
   desc: boolean;
 }
 
-const KEY = "ws-pane-sort";
+const KEY = "ui.pane_sort" as const;
 const DEFAULT: SortState = { key: "name", desc: false };
 
 function load(): SortState {
   try {
-    const raw = localStorage.getItem(KEY);
+    const raw = getPref(KEY);
     if (!raw) return DEFAULT;
     const s = JSON.parse(raw) as SortState;
     return s.key === "name" || s.key === "size" || s.key === "modTime" ? s : DEFAULT;
@@ -24,18 +25,26 @@ function load(): SortState {
 /** Listing sort, shared by both panes and remembered across restarts. */
 export function usePaneSort() {
   const [sort, setSort] = useState<SortState>(load);
+  const touched = useRef(false);
+
+  // Adopt the stored sort once hydration lands, unless the user already
+  // clicked a heading in the meantime.
+  useEffect(
+    () =>
+      onPrefsHydrated(() => {
+        if (!touched.current) setSort(load());
+      }),
+    [],
+  );
 
   const toggle = useCallback((key: SortKey) => {
+    touched.current = true;
     setSort((prev) => {
       // Same column flips direction; a new column starts ascending, except
       // size and date, where "biggest/newest first" is what you want.
       const next: SortState =
         prev.key === key ? { key, desc: !prev.desc } : { key, desc: key !== "name" };
-      try {
-        localStorage.setItem(KEY, JSON.stringify(next));
-      } catch {
-        // A saved sort is a convenience, never a hard requirement.
-      }
+      setPref(KEY, JSON.stringify(next));
       return next;
     });
   }, []);

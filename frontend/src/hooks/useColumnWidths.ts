@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getPref, onPrefsHydrated, setPref, type PrefKey } from "../lib/prefs";
 
 /* Draggable column widths, persisted so a layout the user tuned survives
    restarts. Widths are applied through CSS custom properties, so dragging
@@ -13,14 +14,14 @@ export interface ColumnSpec {
 
 /** storageKey scopes the saved layout, so the queue and the file panes each
     remember their own column widths. */
-export function useColumnWidths(columns: ColumnSpec[], storageKey: string) {
+export function useColumnWidths(columns: ColumnSpec[], storageKey: PrefKey) {
   const KEY = storageKey;
   const defaults = () =>
     Object.fromEntries(columns.map((c) => [c.id, c.initial])) as Record<string, number>;
 
   const [widths, setWidths] = useState<Record<string, number>>(() => {
     try {
-      const raw = localStorage.getItem(KEY);
+      const raw = getPref(KEY);
       if (!raw) return defaults();
       const saved = JSON.parse(raw) as Record<string, number>;
       // Merge rather than replace: a column added in a later version must
@@ -32,19 +33,36 @@ export function useColumnWidths(columns: ColumnSpec[], storageKey: string) {
   });
 
   const drag = useRef<{ id: string; startX: number; startWidth: number } | null>(null);
+  const touched = useRef(false);
 
-  const persist = useCallback((next: Record<string, number>) => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(next));
-    } catch {
-      // Layout preferences are not worth failing a render over.
-    }
-  }, []);
+  // The first render reads a possibly-cold mirror; adopt what the database
+  // held once it arrives, unless the user has already dragged something.
+  useEffect(
+    () =>
+      onPrefsHydrated(() => {
+        if (touched.current) return;
+        const raw = getPref(KEY);
+        if (!raw) return;
+        try {
+          setWidths({ ...defaults(), ...(JSON.parse(raw) as Record<string, number>) });
+        } catch {
+          // keep what we have
+        }
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [KEY],
+  );
+
+  const persist = useCallback(
+    (next: Record<string, number>) => setPref(KEY, JSON.stringify(next)),
+    [KEY],
+  );
 
   const startResize = useCallback(
     (id: string, event: React.MouseEvent) => {
       event.preventDefault();
       event.stopPropagation();
+      touched.current = true;
       drag.current = { id, startX: event.clientX, startWidth: widths[id] };
     },
     [widths],

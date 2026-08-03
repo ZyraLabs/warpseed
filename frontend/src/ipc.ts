@@ -12,8 +12,11 @@ import {
   EnqueueUploads,
   GetSettings,
   AddBookmark,
+  BackupData,
   BookmarksFor,
+  DataLocation,
   DeleteBookmark,
+  OpenDataFolder,
   ListLocal,
   ListRemote,
   LocalHome,
@@ -250,6 +253,17 @@ export const enqueueUploads = (
   items: UploadItem[],
   remoteDir: string,
 ): Promise<number[]> => EnqueueUploads(siteId, items as never, remoteDir) as Promise<number[]>;
+
+export interface DataInfo {
+  path: string;
+  folder: string;
+  backups: string[];
+}
+
+export const dataLocation = (): Promise<DataInfo> =>
+  DataLocation() as unknown as Promise<DataInfo>;
+export const backupData = (): Promise<string> => BackupData();
+export const openDataFolder = (): Promise<void> => OpenDataFolder();
 
 export const getSettings = (): Promise<Record<string, string>> =>
   GetSettings() as Promise<Record<string, string>>;

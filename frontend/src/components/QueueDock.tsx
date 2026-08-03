@@ -47,7 +47,7 @@ const QUEUE_COLUMNS: ColumnSpec[] = [
 ];
 
 export default function QueueDock() {
-  const { style: colStyle, startResize, reset } = useColumnWidths(QUEUE_COLUMNS, "ws-queue-columns");
+  const { style: colStyle, startResize, reset } = useColumnWidths(QUEUE_COLUMNS, "ui.queue_columns");
   const [streak, setStreak] = useState(false);
   const transfers = useUiStore((s) => s.transfers);
   const progress = useUiStore((s) => s.progress);

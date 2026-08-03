@@ -92,7 +92,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
 
   const nav = usePaneNav(side);
   const { sort, toggle: toggleSort } = usePaneSort();
-  const { style: colStyle, startResize } = useColumnWidths(PANE_COLUMNS, "ws-pane-columns");
+  const { style: colStyle, startResize } = useColumnWidths(PANE_COLUMNS, "ui.pane_columns");
   const [cursor, setCursor] = useState(0);
   const [marks, setMarks] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState<string | null>(null);

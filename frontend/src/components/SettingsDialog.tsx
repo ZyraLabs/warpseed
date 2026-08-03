@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import {
+  backupData,
+  dataLocation,
   deleteSite,
   getSettings,
+  openDataFolder,
+  type DataInfo,
   saveSite,
   setSetting,
   sites as fetchSites,
@@ -47,6 +51,8 @@ export default function SettingsDialog() {
   const setSites = useUiStore((s) => s.setSites);
 
   const [cfg, setCfg] = useState<Record<string, string>>({});
+  const [data, setData] = useState<DataInfo | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
   const [draft, setDraft] = useState<SiteDraft | null>(null);
   const [siteMsg, setSiteMsg] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -57,6 +63,7 @@ export default function SettingsDialog() {
     setConfirmDelete(false);
     void getSettings().then(setCfg).catch(() => setCfg({}));
     void fetchSites().then(setSites).catch(() => undefined);
+    void dataLocation().then(setData).catch(() => setData(null));
   }, [open, setSites]);
 
   if (!open) return null;
@@ -365,6 +372,54 @@ export default function SettingsDialog() {
             </>
           )}
           {siteMsg && <div className="set-note set-msg">{siteMsg}</div>}
+        </section>
+
+        <section className="set-section">
+          <h3>Data</h3>
+          <p className="set-note set-blurb">
+            Sites, bookmarks, the transfer queue, pinned host keys and every setting
+            here live in one file. Passwords are the exception — those stay in Windows
+            Credential Manager and are not part of a backup.
+          </p>
+          <div className="set-row">
+            <label>Settings file</label>
+            <span className="set-inline">
+              <code className="set-path" title={data?.path}>
+                {data?.path ?? "…"}
+              </code>
+            </span>
+          </div>
+          <div className="dialog__actions" style={{ marginTop: "var(--sp-2)" }}>
+            <button className="btn" onClick={() => void openDataFolder().catch(() => undefined)}>
+              Open folder
+            </button>
+            <span style={{ flex: 1 }} />
+            <button
+              className="btn btn--primary"
+              disabled={backingUp}
+              onClick={() => {
+                setBackingUp(true);
+                void backupData()
+                  .then((name) => setSiteMsg(`Backed up to ${name}`))
+                  .catch((err: unknown) => setSiteMsg(String(err)))
+                  .finally(() => {
+                    setBackingUp(false);
+                    void dataLocation().then(setData).catch(() => undefined);
+                  });
+              }}
+            >
+              {backingUp ? "Backing up…" : "Back up now"}
+            </button>
+          </div>
+          {data && data.backups.length > 0 && (
+            <p className="set-note" style={{ marginTop: "var(--sp-2)" }}>
+              {data.backups.length} backup{data.backups.length === 1 ? "" : "s"} · newest{" "}
+              {data.backups[0]}. To restore one: close warpseed, delete
+              warpseed.db along with any warpseed.db-wal and warpseed.db-shm beside it,
+              then rename the backup to warpseed.db. Leaving the -wal file behind
+              replays old changes over the restored copy.
+            </p>
+          )}
         </section>
 
         <div className="dialog__actions">
