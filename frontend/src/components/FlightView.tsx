@@ -1,10 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  on,
-  transfersList,
-  type ConnState,
-  type TransferProgress,
-  type TransferState,
 } from "../ipc";
 import { formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
@@ -109,75 +104,10 @@ export default function FlightView() {
   const sites = useUiStore((s) => s.sites);
   const connStates = useUiStore((s) => s.connStates);
   const sessionLog = useUiStore((s) => s.sessionLog);
-  const setTransfers = useUiStore((s) => s.setTransfers);
-  const applyProgress = useUiStore((s) => s.applyProgress);
-  const patchTransferState = useUiStore((s) => s.patchTransferState);
-  const setConnState = useUiStore((s) => s.setConnState);
-  const pushSessionEvent = useUiStore((s) => s.pushSessionEvent);
 
   // Ticked once per second by the timeline sampler so retry countdowns and
   // stall detection stay honest even when no progress events arrive.
   const [now, setNow] = useState(() => Date.now());
-
-  // Same event wiring as QueueDock (the dock may or may not be mounted).
-  useEffect(() => {
-    const refresh = () => void transfersList().then(setTransfers).catch(() => undefined);
-    refresh();
-    const seenLanes = new Set<number>(); // ids already announced as multi-lane
-    // Wails delivers events to earlier listeners first: the always-mounted
-    // dock/App handlers have already written the NEW state into the store by
-    // the time these run, so "did it change?" must be answered from local
-    // snapshots, never from the store.
-    const lastTransfer = new Map(useUiStore.getState().transfers.map((t) => [t.id, t.state]));
-    const lastConn: Record<number, string> = { ...useUiStore.getState().connStates };
-    const offChanged = on("queue:changed", refresh);
-    const offProgress = on<TransferProgress>("transfer:progress", (p) => {
-      // The dock may have applied this exact sample already; feeding the EMA
-      // a second zero-delta sample microseconds later would decay the rate.
-      const cur = useUiStore.getState().progress[p.id];
-      if (!cur || cur.bytes !== p.bytes) applyProgress(p.id, p.bytes, p.size, p.chunks);
-      if (p.chunks && p.chunks.length > 1 && !seenLanes.has(p.id)) {
-        seenLanes.add(p.id);
-        const t = useUiStore.getState().transfers.find((x) => x.id === p.id);
-        pushSessionEvent(
-          "info",
-          `hyperlane ×${p.chunks.length} engaged — ${t ? baseName(t.src) : `#${p.id}`}`,
-        );
-      }
-    });
-    const offState = on<TransferState>("transfer:state", (s) => {
-      const prevState = lastTransfer.get(s.id);
-      lastTransfer.set(s.id, s.state);
-      const t = useUiStore.getState().transfers.find((x) => x.id === s.id);
-      const name = t ? baseName(t.src) : `transfer #${s.id}`;
-      if (s.state === "completed") {
-        pushSessionEvent("ok", `${name} completed${t && t.size > 0 ? ` · ${formatSize(t.size)}` : ""}`);
-      } else if (s.state === "failed") {
-        pushSessionEvent("err", `${name} failed${s.error ? ` — ${truncate(s.error, 80)}` : ""}`);
-      } else if (s.state === "active" && prevState !== "active") {
-        pushSessionEvent("info", `${name} in flight`);
-      }
-      patchTransferState(s.id, s.state, s.error);
-    });
-    const offConn = on<ConnState>("site:connstate", (c) => {
-      const prev = lastConn[c.siteId];
-      lastConn[c.siteId] = c.state;
-      if (prev !== c.state && c.state !== "connecting") {
-        const site = useUiStore.getState().sites.find((x) => x.id === c.siteId);
-        pushSessionEvent(
-          c.state === "error" ? "err" : "info",
-          `${site?.name ?? `site ${c.siteId}`} ${c.state}`,
-        );
-      }
-      setConnState(c.siteId, c.state);
-    });
-    return () => {
-      offChanged();
-      offProgress();
-      offState();
-      offConn();
-    };
-  }, [setTransfers, applyProgress, patchTransferState, setConnState, pushSessionEvent]);
 
   // Session timeline: same sampling approach as Sparkline (1s aggregate of
   // fresh active rates), self-contained buffer, drawn straight to canvas.

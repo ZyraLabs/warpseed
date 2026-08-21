@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/pkg/sftp"
+	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
 	"warpseed/internal/creds"
 	"warpseed/internal/dispatch"
@@ -42,6 +43,9 @@ type App struct {
 
 	mu       sync.Mutex
 	sessions map[int64]*sftpfast.Client // browse connection per connected site
+
+	mini         bool // window currently shrunk to the pill
+	miniW, miniH int  // window geometry to restore when mini mode ends
 }
 
 func NewApp() *App {
@@ -223,6 +227,42 @@ func (a *App) LocalHome() (string, error) {
 // DiskSpace reports free/total bytes of the volume holding path (Deck view).
 func (a *App) DiskSpace(path string) (localfs.Space, error) {
 	return localfs.DiskSpace(path)
+}
+
+// SetMiniMode shrinks the window to an always-on-top ambient pill, or
+// restores the previous geometry. The min-size clamp must move first —
+// the 900×560 floor from launch would otherwise swallow the shrink.
+func (a *App) SetMiniMode(on bool) {
+	if a.ctx == nil {
+		return
+	}
+	if on {
+		a.mu.Lock()
+		if a.mini { // re-entrant call: the captured size would be the pill's own
+			a.mu.Unlock()
+			return
+		}
+		a.mini = true
+		a.mu.Unlock()
+		w, h := wruntime.WindowGetSize(a.ctx)
+		a.mu.Lock()
+		a.miniW, a.miniH = w, h
+		a.mu.Unlock()
+		wruntime.WindowSetMinSize(a.ctx, 320, 96)
+		wruntime.WindowSetSize(a.ctx, 380, 96)
+		wruntime.WindowSetAlwaysOnTop(a.ctx, true)
+		return
+	}
+	wruntime.WindowSetAlwaysOnTop(a.ctx, false)
+	wruntime.WindowSetMinSize(a.ctx, 900, 560)
+	a.mu.Lock()
+	a.mini = false
+	w, h := a.miniW, a.miniH
+	a.mu.Unlock()
+	if w < 900 || h < 560 {
+		w, h = 1280, 800
+	}
+	wruntime.WindowSetSize(a.ctx, w, h)
 }
 
 // SchemaVersion lets the frontend show DB health in the status bar.

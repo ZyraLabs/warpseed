@@ -1,0 +1,75 @@
+/* Mini mode: the whole window is one pill. */
+
+.mini {
+  height: 100vh;
+  box-sizing: border-box;
+  background: var(--surface-0);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+  overflow: hidden;
+  user-select: none;
+}
+
+.mini__glyph { flex: none; }
+
+.mini__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mini__name {
+  font-size: 12.5px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mini__name--idle { color: var(--text-dim); }
+
+.mini__lanes { display: flex; gap: 3px; }
+.mini__lane { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.mini__lane > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform 300ms linear;
+}
+
+.mini__rate {
+  font-family: var(--font-data);
+  font-size: 12px;
+  color: var(--accent);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mini__err {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--state-error);
+  box-shadow: 0 0 6px color-mix(in oklab, var(--state-error) 60%, transparent);
+}
+
+.mini__restore {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-card);
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.mini__restore:hover { color: var(--text); border-color: var(--border-strong); }

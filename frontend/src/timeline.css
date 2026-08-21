@@ -1,0 +1,135 @@
+/* Timeline view: the session as a chronological feed. Live work pinned on
+   top as cards; settled transfers and session events as spine entries. */
+
+.tl {
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  overflow: hidden;
+  display: flex;
+}
+
+.tl__scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 22px 32px;
+  position: relative;
+}
+
+.tl__spine {
+  position: absolute;
+  left: 101px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+
+.tl__day {
+  margin: 14px 0 8px 128px;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
+  color: var(--text-faint);
+}
+
+.tl__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 10px;
+  position: relative;
+}
+
+.tl__time {
+  width: 48px;
+  flex: none;
+  text-align: right;
+  font-family: var(--font-data);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  padding-top: 7px;
+}
+
+.tl__dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--border-strong);
+  margin-top: 7px;
+  position: relative;
+  z-index: 1;
+}
+.tl__dot--live { background: var(--accent); box-shadow: 0 0 0 4px var(--accent-glow); }
+.tl__dot--ok { background: var(--state-done); }
+.tl__dot--err { background: var(--state-error); box-shadow: 0 0 0 4px color-mix(in oklab, var(--state-error) 15%, transparent); }
+.tl__dot--info { background: var(--border-strong); }
+
+.tl__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: var(--text-xs);
+  color: var(--text-mid);
+  padding-top: 5px;
+  min-width: 0;
+}
+.tl__detail { color: var(--text-faint); font-size: var(--text-2xs); }
+.tl__ico--ok { color: var(--state-done); flex: none; }
+
+.tl__card {
+  flex: 1;
+  min-width: 0;
+  max-width: 640px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.tl__card--live { border-color: color-mix(in oklab, var(--accent) 35%, var(--border)); }
+.tl__card--err {
+  background: color-mix(in oklab, var(--state-error) 6%, var(--surface-card));
+  border-color: color-mix(in oklab, var(--state-error) 30%, var(--border));
+}
+
+.tl__name {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tl__card--err .tl__name { color: var(--state-error); }
+
+.tl__lanes { display: flex; gap: 4px; }
+.tl__lane { flex: 1; height: 4px; border-radius: 2px; background: var(--surface-3); overflow: hidden; }
+.tl__lane > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform 300ms linear;
+}
+
+.tl__meta { font-size: var(--text-xs); color: var(--text-dim); }
+.tl__actions { display: flex; gap: 8px; margin-top: 2px; }
+.tl__actions .btn { display: inline-flex; align-items: center; gap: 5px; }
+
+.tl__empty {
+  margin: 60px auto;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+}

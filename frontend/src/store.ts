@@ -20,7 +20,7 @@ export interface SessionEvent {
   text: string;
 }
 
-const SESSION_LOG_CAP = 50;
+const SESSION_LOG_CAP = 100;
 
 interface PaneState {
   source: PaneSource;
@@ -39,7 +39,8 @@ interface UiState {
   progress: Record<number, ProgressSample>;
   queueOpen: boolean;
   settingsOpen: boolean;
-  viewMode: "browse" | "flight" | "deck";
+  viewMode: "browse" | "flight" | "deck" | "timeline";
+  miniMode: boolean;
   sessionLog: SessionEvent[];
 
   setPane: (side: PaneSide, source: PaneSource, path: string) => void;
@@ -55,7 +56,8 @@ interface UiState {
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
-  setViewMode: (mode: "browse" | "flight" | "deck") => void;
+  setViewMode: (mode: "browse" | "flight" | "deck" | "timeline") => void;
+  setMiniMode: (on: boolean) => void;
   pushSessionEvent: (kind: SessionEvent["kind"], text: string) => void;
 }
 
@@ -75,6 +77,7 @@ export const useUiStore = create<UiState>((set) => ({
   queueOpen: false,
   settingsOpen: false,
   viewMode: "browse",
+  miniMode: false,
   sessionLog: [],
 
   setPane: (side, source, path) =>
@@ -120,6 +123,7 @@ export const useUiStore = create<UiState>((set) => ({
   setQueueOpen: (queueOpen) => set({ queueOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setViewMode: (viewMode) => set({ viewMode }),
+  setMiniMode: (miniMode) => set({ miniMode }),
   pushSessionEvent: (kind, text) =>
     set((s) => ({
       sessionLog: [{ at: Date.now(), kind, text }, ...s.sessionLog].slice(0, SESSION_LOG_CAP),

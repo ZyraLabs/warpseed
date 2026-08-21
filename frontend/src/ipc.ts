@@ -33,6 +33,7 @@ import {
   ResumeTransfer,
   SaveSite,
   SchemaVersion,
+  SetMiniMode,
   SetSetting,
   Sites,
   TransfersList,
@@ -87,6 +88,7 @@ export async function list(source: PaneSource, path: string): Promise<Listing> {
 export const localHome = (): Promise<string> => LocalHome();
 export const localRoots = (): Promise<FsRoot[]> => LocalRoots() as Promise<FsRoot[]>;
 export const schemaVersion = (): Promise<number> => SchemaVersion();
+export const setMiniMode = (on: boolean): Promise<void> => SetMiniMode(on);
 
 export const sites = (): Promise<Site[]> => Sites() as unknown as Promise<Site[]>;
 export const saveSite = (site: Partial<Site>, password: string): Promise<Site> =>

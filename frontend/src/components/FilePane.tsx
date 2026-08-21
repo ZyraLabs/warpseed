@@ -145,9 +145,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
   // navigation back on this list — display:none dropped focus to <body>,
   // which would otherwise dead-key arrows/Space/Backspace until a click.
   const viewMode = useUiStore((s) => s.viewMode);
+  const miniMode = useUiStore((s) => s.miniMode);
   useEffect(() => {
-    if (viewMode === "browse" && isActive) scrollRef.current?.focus();
-  }, [viewMode, isActive]);
+    if (viewMode === "browse" && isActive && !miniMode) scrollRef.current?.focus();
+  }, [viewMode, isActive, miniMode]);
 
   // Reset selection state on navigation.
   useEffect(() => {
@@ -444,7 +445,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
     const handler = (ev: Event) => {
       const { side: s, cmd } = (ev as CustomEvent<PaneCmd>).detail;
       if (s !== side) return;
-      if (useUiStore.getState().viewMode !== "browse") return; // panes hidden
+      {
+        const st = useUiStore.getState();
+        if (st.viewMode !== "browse" || st.miniMode) return; // panes hidden
+      }
       if (cmd === "up") nav.up();
       else if (cmd === "editpath") setEditReq((n) => n + 1);
       else if (cmd === "filter") setFilter((f) => (f === null ? "" : f));
@@ -466,10 +470,11 @@ export default function FilePane({ side }: { side: PaneSide }) {
   useEffect(() => {
     if (!isActive) return;
     const handler = (e: KeyboardEvent) => {
-      // Flight mode hides the panes; their shortcuts must sleep with them —
-      // F5 would silently re-queue old marks, F7/F8 would open invisible
-      // dialogs inside a display:none subtree.
-      if (useUiStore.getState().viewMode !== "browse") return;
+      // Flight/Deck/mini hide the panes; their shortcuts must sleep with
+      // them — F5 would silently re-queue old marks, F7/F8 would open
+      // invisible dialogs inside a display:none subtree.
+      const st = useUiStore.getState();
+      if (st.viewMode !== "browse" || st.miniMode) return;
       const inField =
         e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
       if (e.ctrlKey && e.key.toLowerCase() === "l") {

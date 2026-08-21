@@ -150,3 +150,17 @@ export function Slipstream({
     </svg>
   );
 }
+
+export const Shrink = icon(
+  <>
+    <path d="M6.5 1.5v5h-5" />
+    <path d="M9.5 14.5v-5h5" />
+  </>,
+);
+
+export const Expand = icon(
+  <>
+    <path d="M9.5 1.5h5v5" />
+    <path d="M6.5 14.5h-5v-5" />
+  </>,
+);

@@ -137,11 +137,35 @@ export default function QueueDock() {
   useEffect(() => {
     const refresh = () => void transfersList().then(setTransfers).catch(() => undefined);
     refresh();
+    // Session-log capture lives here because the dock is always mounted.
+    // Change detection uses local snapshots: this handler writes the new
+    // state into the store itself, so comparing against the store would
+    // always answer "unchanged".
+    const push = useUiStore.getState().pushSessionEvent;
+    const lastState = new Map(useUiStore.getState().transfers.map((t) => [t.id, t.state]));
+    const seenLanes = new Set<number>(); // ids already announced as multi-lane
     const offChanged = on("queue:changed", refresh);
-    const offProgress = on<TransferProgress>("transfer:progress", (p) =>
-      applyProgress(p.id, p.bytes, p.size, p.chunks),
-    );
+    const offProgress = on<TransferProgress>("transfer:progress", (p) => {
+      applyProgress(p.id, p.bytes, p.size, p.chunks);
+      if (p.chunks && p.chunks.length > 1 && !seenLanes.has(p.id)) {
+        seenLanes.add(p.id);
+        const t = useUiStore.getState().transfers.find((x) => x.id === p.id);
+        push("info", `hyperlane ×${p.chunks.length} engaged — ${t ? baseName(t.src) : `#${p.id}`}`);
+      }
+    });
     const offState = on<TransferState>("transfer:state", (s) => {
+      const prev = lastState.get(s.id);
+      lastState.set(s.id, s.state);
+      const t = useUiStore.getState().transfers.find((x) => x.id === s.id);
+      const name = t ? baseName(t.src) : `transfer #${s.id}`;
+      if (s.state === "completed") {
+        push("ok", `${name} completed${t && t.size > 0 ? ` · ${formatSize(t.size)}` : ""}`);
+      } else if (s.state === "failed") {
+        const why = s.error ?? "";
+        push("err", `${name} failed${why ? ` — ${why.length > 80 ? why.slice(0, 79) + "…" : why}` : ""}`);
+      } else if (s.state === "active" && prev !== "active") {
+        push("info", `${name} in flight`);
+      }
       patchTransferState(s.id, s.state, s.error);
       if (s.state === "active") setStreak(true); // warp-line streak (§8.2)
     });

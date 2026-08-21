@@ -130,6 +130,10 @@ export function SchemaVersion() {
   return window['go']['main']['App']['SchemaVersion']();
 }
 
+export function SetMiniMode(arg1) {
+  return window['go']['main']['App']['SetMiniMode'](arg1);
+}
+
 export function SetSetting(arg1, arg2) {
   return window['go']['main']['App']['SetSetting'](arg1, arg2);
 }

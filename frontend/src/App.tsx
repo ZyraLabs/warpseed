@@ -2,9 +2,11 @@ import { useEffect } from "react";
 import CommandPalette from "./components/CommandPalette";
 import FilePane from "./components/FilePane";
 import DeckView from "./components/DeckView";
+import MiniView from "./components/MiniView";
+import TimelineView from "./components/TimelineView";
 import FlightView from "./components/FlightView";
 import HostKeyDialog from "./components/HostKeyDialog";
-import { Heart, Search, Sliders, Slipstream } from "./components/Icon";
+import { Heart, Search, Shrink, Sliders, Slipstream } from "./components/Icon";
 import QueueDock from "./components/QueueDock";
 import QuickConnect from "./components/QuickConnect";
 import SettingsDialog from "./components/SettingsDialog";
@@ -16,6 +18,7 @@ import {
   localStart,
   on,
   openExternal,
+  setMiniMode as ipcSetMiniMode,
   schemaVersion,
   setSetting,
   sites as fetchSites,
@@ -40,6 +43,8 @@ export default function App() {
   const siteList = useUiStore((s) => s.sites);
   const transfers = useUiStore((s) => s.transfers);
   const viewMode = useUiStore((s) => s.viewMode);
+  const miniMode = useUiStore((s) => s.miniMode);
+  const setMiniMode = useUiStore((s) => s.setMiniMode);
   const setViewMode = useUiStore((s) => s.setViewMode);
 
   // Boot: home dirs, schema health, saved sites, backend event subscriptions.
@@ -85,7 +90,17 @@ export default function App() {
           setPane(1, "local", home);
         }),
     );
-    const offConn = on<ConnState>("site:connstate", (c) => setConnState(c.siteId, c.state));
+    const lastConn: Record<number, string> = { ...useUiStore.getState().connStates };
+    const offConn = on<ConnState>("site:connstate", (c) => {
+      if (lastConn[c.siteId] !== c.state && c.state !== "connecting") {
+        const site = useUiStore.getState().sites.find((x) => x.id === c.siteId);
+        useUiStore
+          .getState()
+          .pushSessionEvent(c.state === "error" ? "err" : "info", `${site?.name ?? `site ${c.siteId}`} ${c.state}`);
+      }
+      lastConn[c.siteId] = c.state;
+      setConnState(c.siteId, c.state);
+    });
     // One-time nudge after the first transfer ever completes: point at the
     // status-bar heart, then never mention it again.
     const offDonate = on<TransferState>("transfer:state", (s) => {
@@ -103,6 +118,23 @@ export default function App() {
   // Global keys: Tab pane switch, Ctrl+K palette (ux-spec §3.1).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      // The pill has one shortcut: Escape restores the window. Everything
+      // else must not act on the hidden UI underneath.
+      if (useUiStore.getState().miniMode) {
+        if (e.key === "Escape") {
+          // Always give the full UI back; a failed restore call only means
+          // the window kept the pill size, which the user can fix by hand.
+          useUiStore.getState().setMiniMode(false);
+          void ipcSetMiniMode(false).catch(() =>
+            window.dispatchEvent(
+              new CustomEvent("ws:toast", {
+                detail: { kind: "error", text: "Could not restore the window size" },
+              }),
+            ),
+          );
+        }
+        return;
+      }
       const inField =
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLSelectElement ||
@@ -144,7 +176,11 @@ export default function App() {
   const connectedCount = Object.values(connStates).filter((s) => s === "connected").length;
 
   return (
-    <div className="app">
+    <div className={`app${miniMode ? " app--mini" : ""}`}>
+      {/* Mini mode overlays the pill and CSS-hides the rest of the tree —
+          everything stays MOUNTED so pane state, the queue dock's event
+          subscriptions, and scroll positions survive the round trip. */}
+      {miniMode && <MiniView />}
       <header className="app__header">
         <span className="app__mark">
           <Slipstream size={18} className="app__glyph" />
@@ -165,6 +201,13 @@ export default function App() {
             onClick={() => setViewMode("browse")}
           >
             Browse
+          </button>
+          <button
+            className={`viewseg__btn${viewMode === "timeline" ? " viewseg__btn--active" : ""}`}
+            aria-pressed={viewMode === "timeline"}
+            onClick={() => setViewMode("timeline")}
+          >
+            Activity
           </button>
           {flightAvailable && (
             <button
@@ -191,6 +234,26 @@ export default function App() {
         </button>
         <button
           className="btn btn--icon"
+          title="Minimize to pill"
+          aria-label="Minimize to an always-on-top pill"
+          onClick={() => {
+            // Hide the UI only once the window really shrank — on IPC
+            // failure the full window keeps its full UI.
+            void ipcSetMiniMode(true)
+              .then(() => setMiniMode(true))
+              .catch(() =>
+                window.dispatchEvent(
+                  new CustomEvent("ws:toast", {
+                    detail: { kind: "error", text: "Could not enter mini mode" },
+                  }),
+                ),
+              );
+          }}
+        >
+          <Shrink size={14} />
+        </button>
+        <button
+          className="btn btn--icon"
           title="Settings (Ctrl+,)"
           aria-label="Settings"
           onClick={() => setSettingsOpen(true)}
@@ -208,6 +271,7 @@ export default function App() {
         </div>
         {viewMode === "flight" && <FlightView />}
         {viewMode === "deck" && <DeckView />}
+        {viewMode === "timeline" && <TimelineView />}
       </main>
 
       <QueueDock />

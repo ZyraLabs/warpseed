@@ -272,3 +272,12 @@
     opacity: 0.4;
   }
 }
+
+/* Mini mode: the pill is the only visible child; the rest of the app stays
+   mounted (state, subscriptions) but painted away. */
+.app--mini > *:not(.mini) {
+  display: none !important;
+}
+.app--mini > .mini {
+  grid-row: 1 / -1;
+}
