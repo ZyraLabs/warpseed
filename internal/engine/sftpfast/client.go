@@ -99,6 +99,31 @@ func Dial(ctx context.Context, cfg Config, hostKey ssh.HostKeyCallback) (*Client
 	return &Client{ssh: sshClient, sftp: sftpClient}, nil
 }
 
+// Alive reports whether the SSH transport still responds, waiting at most
+// timeout. A connection dropped by an idle NAT/firewall often stays half-open:
+// requests on it block until the OS gives up (minutes), which is exactly the
+// window in which "reconnect" must already work — hence the hard deadline.
+func (c *Client) Alive(timeout time.Duration) bool {
+	done := make(chan error, 1)
+	go func() {
+		if c.ssh == nil { // in-process test client: probe the SFTP session itself
+			_, err := c.sftp.RealPath(".")
+			done <- err
+			return
+		}
+		// A refused global request still proves the transport is up; only a
+		// transport error means the connection is gone.
+		_, _, err := c.ssh.SendRequest("keepalive@openssh.com", true, nil)
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		return err == nil
+	case <-time.After(timeout):
+		return false
+	}
+}
+
 func (c *Client) Close() error {
 	var first error
 	if c.sftp != nil {

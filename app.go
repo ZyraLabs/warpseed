@@ -5,14 +5,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
+	"net"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/pkg/sftp"
 
 	"warpseed/internal/creds"
 	"warpseed/internal/dispatch"
@@ -306,11 +310,17 @@ func (a *App) ConnectSite(id int64) error {
 		return errNoStore
 	}
 	a.mu.Lock()
-	if _, ok := a.sessions[id]; ok {
-		a.mu.Unlock()
-		return nil
-	}
+	existing := a.sessions[id]
 	a.mu.Unlock()
+	if existing != nil {
+		if existing.Alive(3 * time.Second) {
+			return nil
+		}
+		// The session died underneath us (idle timeout, network change).
+		// Evict it so this call falls through to a fresh dial — otherwise
+		// reconnect stays a silent no-op until the app is restarted.
+		a.dropSession(id, existing)
+	}
 
 	site, err := a.store.SiteByID(id)
 	if err != nil {
@@ -345,10 +355,100 @@ func (a *App) ConnectSite(id int64) error {
 	}
 
 	a.mu.Lock()
+	// Two ConnectSite calls can race past the liveness check and both dial.
+	// Install-or-discard under the lock: the loser closes its own client
+	// instead of orphaning the winner's (a leaked authenticated session
+	// holds a server slot and its mux goroutines for the process lifetime).
+	if cur, ok := a.sessions[id]; ok && cur != client {
+		a.mu.Unlock()
+		client.Close()
+		return nil
+	}
 	a.sessions[id] = client
 	a.mu.Unlock()
+	go a.keepAlive(id, client)
 	a.emitConnState(id, "connected")
 	return nil
+}
+
+// dropSession closes and removes one browse session — but only while it is
+// still the registered one, so a stale keepalive can never tear down a
+// session the user has already re-established.
+func (a *App) dropSession(id int64, c *sftpfast.Client) {
+	a.mu.Lock()
+	if a.sessions[id] != c {
+		a.mu.Unlock()
+		return
+	}
+	delete(a.sessions, id)
+	a.mu.Unlock()
+	c.Close()
+	a.emitConnState(id, "disconnected")
+}
+
+// keepAlive pings a browse session until it dies or is replaced. The pings
+// keep NAT/firewall idle timers from silently killing the connection, and a
+// failed ping flips the UI to disconnected so the next connect redials.
+func (a *App) keepAlive(id int64, c *sftpfast.Client) {
+	// a.ctx is only set in startup; guard so a caller that skips the Wails
+	// lifecycle (tests, future refactors) cannot panic a background goroutine.
+	ctx := a.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+		a.mu.Lock()
+		current := a.sessions[id] == c
+		a.mu.Unlock()
+		if !current {
+			return
+		}
+		if !c.Alive(10 * time.Second) {
+			a.dropSession(id, c)
+			return
+		}
+	}
+}
+
+// evictIfDead drops the session when err says the transport is gone: a
+// permission error keeps the session, a dead connection frees it so the UI
+// can offer a reconnect that works. Suspect errors are corroborated with a
+// probe first — one slow call timing out (a transient net.Error on a
+// high-RTT link) must not tear down a healthy session.
+func (a *App) evictIfDead(id int64, c *sftpfast.Client, err error) {
+	if !isDeadConn(err) {
+		return
+	}
+	if c.Alive(3 * time.Second) {
+		return
+	}
+	a.dropSession(id, c)
+}
+
+// isDeadConn classifies errors that mean the SSH transport is gone, as
+// opposed to ordinary SFTP failures like "permission denied".
+func isDeadConn(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, io.EOF) || errors.Is(err, sftp.ErrSSHFxConnectionLost) || errors.Is(err, net.ErrClosed) {
+		return true
+	}
+	var nerr net.Error
+	if errors.As(err, &nerr) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "connection lost") ||
+		strings.Contains(s, "broken pipe") ||
+		strings.Contains(s, "connection reset")
 }
 
 // DisconnectSite closes the site's browse connection if open.
@@ -373,7 +473,11 @@ func (a *App) ListRemote(id int64, path string) (core.Listing, error) {
 	if !ok {
 		return core.Listing{}, fmt.Errorf("site %d is not connected", id)
 	}
-	return client.List(path)
+	l, err := client.List(path)
+	if err != nil {
+		a.evictIfDead(id, client, err)
+	}
+	return l, err
 }
 
 // RemoteHome resolves the SFTP session's home directory.
@@ -384,7 +488,11 @@ func (a *App) RemoteHome(id int64) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("site %d is not connected", id)
 	}
-	return client.Home()
+	home, err := client.Home()
+	if err != nil {
+		a.evictIfDead(id, client, err)
+	}
+	return home, err
 }
 
 // --- File operation bindings (local and remote) ---
@@ -431,6 +539,7 @@ func (a *App) DeleteRemote(siteID int64, paths []string, dir string) (int, error
 	removed := 0
 	for _, p := range paths {
 		if rerr := client.Remove(a.ctx, p); rerr != nil {
+			a.evictIfDead(siteID, client, rerr)
 			a.emitFsChanged("remote", siteID, dir)
 			return removed, rerr
 		}
@@ -447,6 +556,7 @@ func (a *App) RenameRemote(siteID int64, path, newName, dir string) error {
 		return err
 	}
 	rerr := client.RenameEntry(path, newName)
+	a.evictIfDead(siteID, client, rerr)
 	a.emitFsChanged("remote", siteID, dir)
 	return rerr
 }
@@ -458,6 +568,7 @@ func (a *App) MkdirRemote(siteID int64, parent, name string) error {
 		return err
 	}
 	rerr := client.MkdirEntry(parent, name)
+	a.evictIfDead(siteID, client, rerr)
 	a.emitFsChanged("remote", siteID, parent)
 	return rerr
 }
@@ -840,14 +951,18 @@ var settingValidators = map[string]func(string) error{
 	"bw.mode":              oneOf("off", "fixed", "percent"),
 	// "dark"/"light" are the pre-v3 names, still accepted so an existing
 	// setting keeps working; the frontend maps them to the new themes.
-	"ui.theme":         oneOf("flightdeck", "drafting", "press", "nightshift", "system", "dark", "light"),
+	"ui.theme":         oneOf("clay", "cobalt", "iris", "system", "flightdeck", "drafting", "press", "nightshift", "dark", "light"),
 	"ui.local_default": anyString, // the folder local panes open in
 	// UI layout state lives here rather than in browser storage, so one
 	// backup of the database captures everything except credentials.
 	"ui.queue_columns":        jsonBlob,
+	"ui.queue_sort":           jsonBlob,
 	"ui.pane_columns":         jsonBlob,
 	"ui.pane_sort":            jsonBlob,
 	"ui.recents":              jsonBlob,
+	// One-time flags ("1" once shown) — e.g. the post-first-transfer
+	// support-the-project toast must never repeat.
+	"ui.donate_nudged": oneOf("", "1"),
 	"transfers.chunk_min_mb":  intRange(0, 1<<20), // 0 disables chunking
 	"transfers.chunk_streams": intRange(1, 16),
 }
