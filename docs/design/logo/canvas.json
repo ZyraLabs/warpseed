@@ -1,0 +1,19 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "x": 0, "y": 0, "w": 720, "h": 340, "title": "Overview" },
+    { "file": "Hyperlane.dc.html", "x": 0, "y": 420, "w": 560, "h": 760, "title": "A · Hyperlane" },
+    { "file": "SeedComet.dc.html", "x": 620, "y": 420, "w": 560, "h": 760, "title": "B · Seed Comet" },
+    { "file": "WarpGate.dc.html", "x": 1240, "y": 420, "w": 560, "h": 760, "title": "C · Warp Gate" },
+    { "file": "Slipstream.dc.html", "x": 1860, "y": 420, "w": 560, "h": 760, "title": "D · Slipstream" }
+  ],
+  "annotations": [
+    {
+      "id": "how-to-pick",
+      "x": 780,
+      "y": 40,
+      "w": 300,
+      "text": "Judge each mark at the 16 px size first — that's the taskbar test the old W failed in reverse.\nThe color chip on each board tries the other theme accents."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

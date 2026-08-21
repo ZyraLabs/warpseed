@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #14171f; font-family: "Saira", "Bahnschrift", "Segoe UI", sans-serif; color: #e8eaf0; }
+    a { color: #3fd4e2; } a:hover { color: #7ce4ee; }
+  </style>
+</helmet>
+<div style="width: 720px; height: 340px; box-sizing: border-box; background: #14171f; display: flex; flex-direction: column; gap: 18px; padding: 28px 32px;">
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="font-size: 26px; font-weight: 700; letter-spacing: -0.3px;">warpseed — logo directions</div>
+    <div style="font-size: 14px; line-height: 1.5; color: #9aa1b5;">The current icon is a black W on a white tile, which reads as an Office app rather than a transfer engine. Four directions below, all drawn from the app's Hyperlane language and flightdeck palette. Each board carries a color chip to try the other theme accents.</div>
+  </div>
+  <div style="display: flex; gap: 20px; align-items: stretch;">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; background: #1b1f2a; border-radius: 12px; padding: 18px 12px;">
+      <svg width="64" height="64" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <g transform="translate(48 48) skewX(-14) translate(-48 -48)">
+          <rect x="30" y="15" width="44" height="13" rx="6.5" fill="#e8eaf0" opacity="0.9"></rect>
+          <rect x="12" y="33" width="62" height="13" rx="6.5" fill="#3fd4e2"></rect>
+          <rect x="22" y="51" width="52" height="13" rx="6.5" fill="#e8eaf0" opacity="0.55"></rect>
+          <rect x="34" y="69" width="40" height="13" rx="6.5" fill="#e8eaf0" opacity="0.3"></rect>
+        </g>
+      </svg>
+      <div style="font-size: 13px; font-weight: 600;">A · Hyperlane</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; background: #1b1f2a; border-radius: 12px; padding: 18px 12px;">
+      <svg width="64" height="64" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <rect x="16" y="29" width="32" height="9" rx="4.5" fill="#e8eaf0" opacity="0.35"></rect>
+        <rect x="6" y="43.5" width="42" height="9" rx="4.5" fill="#e8eaf0" opacity="0.7"></rect>
+        <rect x="18" y="58" width="28" height="9" rx="4.5" fill="#e8eaf0" opacity="0.35"></rect>
+        <circle cx="66" cy="48" r="18" fill="#3fd4e2"></circle>
+      </svg>
+      <div style="font-size: 13px; font-weight: 600;">B · Seed Comet</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; background: #1b1f2a; border-radius: 12px; padding: 18px 12px;">
+      <svg width="64" height="64" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <circle cx="48" cy="48" r="28" stroke="#e8eaf0" stroke-width="10" fill="none" opacity="0.9"></circle>
+        <rect x="4" y="42" width="88" height="12" rx="6" fill="#3fd4e2" stroke="#1b1f2a" stroke-width="6"></rect>
+      </svg>
+      <div style="font-size: 13px; font-weight: 600;">C · Warp Gate</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; align-items: center; background: #1b1f2a; border-radius: 12px; padding: 18px 12px;">
+      <svg width="64" height="64" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M18 26 L40 48 L18 70" stroke="#e8eaf0" stroke-opacity="0.45" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path>
+        <path d="M46 26 L68 48 L46 70" stroke="#3fd4e2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path>
+      </svg>
+      <div style="font-size: 13px; font-weight: 600;">D · Slipstream</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":720,"height":340}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #faf8f4; font-family: "Geist", "Segoe UI", sans-serif; color: #16181d; }
+    a { color: #0a7c8c; } a:hover { color: #075762; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: #faf8f4; display: flex; flex-direction: column; padding: 26px 120px 30px;">
+
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <svg width="20" height="20" viewBox="0 0 96 96" fill="none"><path d="M18 26 L40 48 L18 70" stroke="#16181d" stroke-opacity="0.28" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path><path d="M46 26 L68 48 L46 70" stroke="#0a7c8c" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    <span style="font-weight: 700; font-size: 16px;">warpseed</span>
+    <span style="flex: 1;"></span>
+    <span style="display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: #6b7180;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: #2f9e63;"></span>
+      hyperion connected
+    </span>
+    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 10px; background: #ffffff; border: 1px solid #e8e4da;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5 H13.5 M2.5 8 H13.5 M2.5 11.5 H13.5" stroke="#6b7180" stroke-width="1.5" stroke-linecap="round"></path><circle cx="10.5" cy="4.5" r="1.7" fill="#ffffff" stroke="#6b7180" stroke-width="1.3"></circle><circle cx="5.5" cy="8" r="1.7" fill="#ffffff" stroke="#6b7180" stroke-width="1.3"></circle><circle cx="9" cy="11.5" r="1.7" fill="#ffffff" stroke="#6b7180" stroke-width="1.3"></circle></svg>
+    </span>
+  </div>
+
+  <div style="margin-top: 40px;">
+    <div style="font-family: 'Instrument Serif', serif; font-style: italic; font-size: 44px; line-height: 1.1; color: #16181d;">Good evening, Fred.</div>
+    <div style="font-size: 15px; color: #6b7180; margin-top: 6px;">3 new files landed on hyperion since last night. Tell me what to move.</div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 14px; margin-top: 22px; background: #ffffff; border: 1px solid #e8e4da; border-radius: 18px; padding: 20px 24px; box-shadow: 0 18px 50px #16181d14, 0 2px 8px #16181d0a;">
+    <svg width="20" height="20" viewBox="0 0 16 16" fill="none"><path d="M8 1.5 L9.6 6.4 L14.5 8 L9.6 9.6 L8 14.5 L6.4 9.6 L1.5 8 L6.4 6.4 Z" fill="#0a7c8c"></path></svg>
+    <span style="flex: 1; font-size: 18px; color: #9aa0ac;">grab everything new from hyperion into <span style="color: #16181d; font-weight: 500;">D:\Media\Incoming</span>…</span>
+    <span style="font-family: 'Geist Mono', monospace; font-size: 11px; background: #faf8f4; border: 1px solid #e8e4da; border-radius: 7px; padding: 4px 9px; color: #6b7180;">Ctrl K</span>
+    <span style="display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; border-radius: 13px; background: #16181d;">
+      <svg width="15" height="15" viewBox="0 0 96 96" fill="none"><path d="M30 22 L58 48 L30 74" stroke="#faf8f4" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    </span>
+  </div>
+
+  <div style="display: flex; gap: 10px; margin-top: 14px;">
+    <span style="font-size: 12.5px; background: #ffffff; border: 1px solid #e8e4da; border-radius: 999px; padding: 7px 15px; color: #3d4350;">Pull the 3 new files</span>
+    <span style="font-size: 12.5px; background: #ffffff; border: 1px solid #e8e4da; border-radius: 999px; padding: 7px 15px; color: #3d4350;">Retry the failed download</span>
+    <span style="font-size: 12.5px; background: #ffffff; border: 1px solid #e8e4da; border-radius: 999px; padding: 7px 15px; color: #3d4350;">Mirror /isos → D:\Archive</span>
+    <span style="font-size: 12.5px; background: #ffffff; border: 1px solid #e8e4da; border-radius: 999px; padding: 7px 15px; color: #3d4350;">Browse hyperion</span>
+  </div>
+
+  <div style="flex: 1; display: flex; gap: 16px; margin-top: 26px; min-height: 0;">
+    <div style="flex: 1.4; display: flex; flex-direction: column; gap: 16px;">
+      <div style="flex: 1; background: #16181d; color: #f2f0ea; border-radius: 20px; padding: 22px 24px; display: flex; align-items: center; gap: 22px; box-shadow: 0 18px 44px #16181d33;">
+        <svg width="92" height="92" viewBox="0 0 100 100" fill="none">
+          <circle cx="50" cy="50" r="42" stroke="#ffffff22" stroke-width="8"></circle>
+          <circle cx="50" cy="50" r="42" stroke="#4fd8e8" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="63" transform="rotate(-90 50 50)"></circle>
+          <text x="50" y="47" text-anchor="middle" fill="#f2f0ea" font-family="Geist, sans-serif" font-weight="700" font-size="20">76%</text>
+          <text x="50" y="64" text-anchor="middle" fill="#8a92a3" font-family="Geist Mono, monospace" font-size="9">4 LANES</text>
+        </svg>
+        <span style="flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 0;">
+          <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: #8a92a3;">Now transferring</span>
+          <span style="font-size: 17px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">ubuntu-24.04.2-desktop-amd64.iso</span>
+          <span style="font-size: 12.5px; color: #8a92a3;">hyperion → D:\Media\Incoming · 4:12 remaining</span>
+          <span style="display: inline-flex; gap: 4px; margin-top: 2px;">
+            <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 92%; background: #4fd8e8; border-radius: 3px;"></span></span>
+            <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 74%; background: #4fd8e8; border-radius: 3px;"></span></span>
+            <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 81%; background: #4fd8e8; border-radius: 3px;"></span></span>
+            <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 58%; background: #4fd8e8; border-radius: 3px;"></span></span>
+          </span>
+        </span>
+        <span style="font-family: 'Geist Mono', monospace; font-size: 22px; font-weight: 500; color: #4fd8e8; white-space: nowrap;">38.2 MB/s</span>
+      </div>
+      <div style="display: flex; gap: 16px;">
+        <div style="flex: 1; background: #ffffff; border: 1px solid #e8e4da; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px;">
+          <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #b2483f; font-weight: 600;">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2 L14.5 13.5 H1.5 Z" stroke="#b2483f" stroke-width="1.4" stroke-linejoin="round"></path><path d="M8 6.5 V9.7" stroke="#b2483f" stroke-width="1.4" stroke-linecap="round"></path><circle cx="8" cy="11.7" r="0.8" fill="#b2483f"></circle></svg>
+            Needs attention
+          </span>
+          <span style="font-size: 14px; font-weight: 600;">arch-2026.08.01-x86_64.iso</span>
+          <span style="font-size: 12px; color: #6b7180;">Connection reset at 64% — retrying in 12 s. Your bytes are safe; it resumes where it stopped.</span>
+          <span style="display: inline-flex; gap: 8px; margin-top: 4px;">
+            <span style="font-size: 12px; font-weight: 600; background: #16181d; color: #faf8f4; border-radius: 9px; padding: 6px 14px;">Retry now</span>
+            <span style="font-size: 12px; font-weight: 600; border: 1px solid #e8e4da; border-radius: 9px; padding: 6px 14px; color: #3d4350;">Skip</span>
+          </span>
+        </div>
+        <div style="flex: 1; background: #ffffff; border: 1px solid #e8e4da; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 12px; color: #0a7c8c; font-weight: 600;">New on hyperion</span>
+          <span style="display: flex; flex-direction: column; gap: 5px; font-size: 12.5px; color: #3d4350;">
+            <span style="display: flex; justify-content: space-between;"><span>fedora-42-workstation-live.iso</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #9aa0ac;">2.4 GB</span></span>
+            <span style="display: flex; justify-content: space-between;"><span>raspios-bookworm-full.img.xz</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #9aa0ac;">2.7 GB</span></span>
+            <span style="display: flex; justify-content: space-between;"><span>site-backup-2026-08.tar.zst</span><span style="font-family: 'Geist Mono', monospace; font-size: 11px; color: #9aa0ac;">840 MB</span></span>
+          </span>
+          <span style="display: inline-flex; margin-top: 4px;">
+            <span style="font-size: 12px; font-weight: 600; background: #0a7c8c; color: #ffffff; border-radius: 9px; padding: 6px 14px;">Grab all three</span>
+          </span>
+        </div>
+      </div>
+    </div>
+    <div style="width: 300px; display: flex; flex-direction: column; gap: 16px;">
+      <div style="background: #ffffff; border: 1px solid #e8e4da; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 6px;">
+        <span style="font-size: 12px; color: #6b7180;">Tonight so far</span>
+        <span style="font-family: 'Instrument Serif', serif; font-style: italic; font-size: 34px; line-height: 1;">14.2 GB</span>
+        <span style="font-size: 12px; color: #6b7180;">6 files · 0 corrupted · avg 39 MB/s</span>
+        <svg width="100%" height="34" viewBox="0 0 240 34" preserveAspectRatio="none" fill="none"><path d="M0 30 L20 29 L40 30 L60 22 L80 24 L100 14 L120 16 L140 8 L160 11 L180 9 L200 13 L220 8 L240 10 L240 34 L0 34 Z" fill="#0a7c8c" opacity="0.15"></path><path d="M0 30 L20 29 L40 30 L60 22 L80 24 L100 14 L120 16 L140 8 L160 11 L180 9 L200 13 L220 8 L240 10" stroke="#0a7c8c" stroke-width="2" stroke-linejoin="round"></path></svg>
+      </div>
+      <div style="flex: 1; background: #ffffff; border: 1px solid #e8e4da; border-radius: 20px; padding: 18px 20px; display: flex; flex-direction: column; gap: 9px;">
+        <span style="font-size: 12px; color: #6b7180;">Done</span>
+        <span style="display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: #3d4350;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8.5 L6.5 12 L13 4.5" stroke="#2f9e63" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          mint-22.2-cinnamon-64bit.iso
+        </span>
+        <span style="display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: #3d4350;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8.5 L6.5 12 L13 4.5" stroke="#2f9e63" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          photos-export-2026.zip
+        </span>
+        <span style="display: flex; align-items: center; gap: 9px; font-size: 12.5px; color: #3d4350;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8.5 L6.5 12 L13 4.5" stroke="#2f9e63" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+          podcast-archive-s3.tar
+        </span>
+        <span style="flex: 1;"></span>
+        <span style="font-size: 12px; color: #9aa0ac;">Panes when you want them: <span style="font-family: 'Geist Mono', monospace; font-size: 11px; background: #faf8f4; border: 1px solid #e8e4da; border-radius: 5px; padding: 1px 6px;">Ctrl B</span> opens the classic dual-pane browser.</span>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

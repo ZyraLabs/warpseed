@@ -1,0 +1,63 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira:wght@400;600;700&display=swap">
+  <style>
+    body { margin: 0; background: #14171f; font-family: "Saira", "Bahnschrift", "Segoe UI", sans-serif; color: #e8eaf0; }
+    a { color: #3fd4e2; } a:hover { color: #7ce4ee; }
+  </style>
+</helmet>
+<div style="width: 760px; height: 400px; box-sizing: border-box; background: #14171f; display: flex; flex-direction: column; gap: 16px; padding: 28px 32px;">
+  <div style="display: flex; flex-direction: column; gap: 6px;">
+    <div style="font-size: 26px; font-weight: 700; letter-spacing: -0.3px;">warpseed — UI directions</div>
+    <div style="font-size: 14px; line-height: 1.5; color: #9aa1b5;">Same window, three products. Each board keeps the ux-spec's rules — dense rows, keyboard-first, queue always visible, calm surface — and fixes what reads as "developer": glyph-character buttons become drawn icons, monospace retreats to numbers only, flat planes gain a real elevation system, and rows get file-type icons and breathing room.</div>
+  </div>
+  <div style="display: flex; gap: 16px; align-items: stretch;">
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; background: #10131c; border-radius: 12px; padding: 16px;">
+      <div style="display: flex; gap: 6px;">
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #161b26;"></span>
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #1c2230;"></span>
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #3fd4e2;"></span>
+      </div>
+      <div style="font-size: 15px; font-weight: 700;">1 · Velocity</div>
+      <div style="font-size: 12px; line-height: 1.5; color: #9aa1b5;">Flight Deck, grown up. Layered dark surfaces with soft elevation, the Slipstream brand woven through, accent glow on the active pane.</div>
+      <div style="font-size: 11px; color: #6d7488; margin-top: auto;">Tradeoff: closest to today — safest, least dramatic change.</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; background: #10131c; border-radius: 12px; padding: 16px;">
+      <div style="display: flex; gap: 6px;">
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #f3f1ec;"></span>
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #ffffff; border: 1px solid #2a2f3d; box-sizing: border-box;"></span>
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #0e7c86;"></span>
+      </div>
+      <div style="font-size: 15px; font-weight: 700;">2 · Studio</div>
+      <div style="font-size: 12px; line-height: 1.5; color: #9aa1b5;">Warm light theme on paper-toned ground, white cards, deep-teal accent. The consumer-app take: friendly, airy, storefront-ready.</div>
+      <div style="font-size: 11px; color: #6d7488; margin-top: auto;">Tradeoff: breaks with the dark instrument identity; long sessions in a bright room only.</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 8px; background: #10131c; border-radius: 12px; padding: 16px;">
+      <div style="display: flex; gap: 6px;">
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #0a0a0d;"></span>
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #101016; border: 1px solid #2a2a34; box-sizing: border-box;"></span>
+        <span style="width: 22px; height: 22px; border-radius: 6px; background: #d8b45a;"></span>
+      </div>
+      <div style="font-size: 15px; font-weight: 700;">3 · Machine Luxe</div>
+      <div style="font-size: 12px; line-height: 1.5; color: #9aa1b5;">Dark luxury: near-black ground, hairline borders, brass accent with cyan data, generous spacing, editorial micro-labels. The instrument panel as jewelry.</div>
+      <div style="font-size: 11px; color: #6d7488; margin-top: auto;">Tradeoff: most opinionated — the brass either lands or it doesn't.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":760,"height":400}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

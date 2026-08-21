@@ -1,0 +1,243 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "Round 1 \u2014 Restyles"
+    },
+    {
+      "id": "page-2",
+      "name": "Round 2 \u2014 Radical"
+    },
+    {
+      "id": "page-3",
+      "name": "Round 3 \u2014 Color"
+    },
+    {
+      "id": "page-4",
+      "name": "Round 4 \u2014 The Product"
+    },
+    {
+      "id": "page-5",
+      "name": "Round 5 \u2014 More Radical"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 760,
+      "h": 400,
+      "title": "Overview",
+      "page": "page-1"
+    },
+    {
+      "file": "Velocity.dc.html",
+      "x": 0,
+      "y": 480,
+      "w": 1280,
+      "h": 800,
+      "title": "1 \u00b7 Velocity",
+      "page": "page-1"
+    },
+    {
+      "file": "Studio.dc.html",
+      "x": 1360,
+      "y": 480,
+      "w": 1280,
+      "h": 800,
+      "title": "2 \u00b7 Studio",
+      "page": "page-1"
+    },
+    {
+      "file": "MachineLuxe.dc.html",
+      "x": 2720,
+      "y": 480,
+      "w": 1280,
+      "h": 800,
+      "title": "3 \u00b7 Machine Luxe",
+      "page": "page-1"
+    },
+    {
+      "file": "Island.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "4 \u00b7 Island",
+      "page": "page-2"
+    },
+    {
+      "file": "FlightControl.dc.html",
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "5 \u00b7 Flight Control",
+      "page": "page-2"
+    },
+    {
+      "file": "Commander.dc.html",
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "6 \u00b7 Commander",
+      "page": "page-2"
+    },
+    {
+      "file": "Ember.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 620,
+      "h": 480,
+      "title": "P1 \u00b7 Ember",
+      "page": "page-3"
+    },
+    {
+      "file": "Acid.dc.html",
+      "x": 700,
+      "y": 0,
+      "w": 620,
+      "h": 480,
+      "title": "P2 \u00b7 Acid",
+      "page": "page-3"
+    },
+    {
+      "file": "Iris.dc.html",
+      "x": 1400,
+      "y": 0,
+      "w": 620,
+      "h": 480,
+      "title": "P3 \u00b7 Iris",
+      "page": "page-3"
+    },
+    {
+      "file": "Cobalt.dc.html",
+      "x": 0,
+      "y": 560,
+      "w": 620,
+      "h": 480,
+      "title": "P4 \u00b7 Cobalt",
+      "page": "page-3"
+    },
+    {
+      "file": "Clay.dc.html",
+      "x": 700,
+      "y": 560,
+      "w": 620,
+      "h": 480,
+      "title": "P5 \u00b7 Clay",
+      "page": "page-3"
+    },
+    {
+      "file": "Signal.dc.html",
+      "x": 1400,
+      "y": 560,
+      "w": 620,
+      "h": 480,
+      "title": "P6 \u00b7 Signal",
+      "page": "page-3"
+    },
+    {
+      "file": "BrowseMode.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "Browse mode (default)",
+      "page": "page-4"
+    },
+    {
+      "file": "FlightMode.dc.html",
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "Flight mode (toggle)",
+      "page": "page-4"
+    },
+    {
+      "file": "Deck.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "7 \u00b7 Deck",
+      "page": "page-5"
+    },
+    {
+      "file": "Timeline.dc.html",
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 800,
+      "title": "8 \u00b7 Timeline",
+      "page": "page-5"
+    },
+    {
+      "file": "Starmap.dc.html",
+      "x": 0,
+      "y": 880,
+      "w": 1280,
+      "h": 800,
+      "title": "9 \u00b7 Starmap",
+      "page": "page-5"
+    },
+    {
+      "file": "Widget.dc.html",
+      "x": 1360,
+      "y": 880,
+      "w": 900,
+      "h": 470,
+      "title": "10 \u00b7 Ambient Widget",
+      "page": "page-5"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "ui-how-to-pick",
+      "x": 820,
+      "y": 60,
+      "w": 320,
+      "page": "page-1",
+      "text": "All three are the SAME window with the same data \u2014 squint at each and ask which one you'd screenshot for the release page.\nA mix is fine too: e.g. Velocity's chrome with Studio's icon warmth. Say what you like and I'll build it into the real CSS."
+    },
+    {
+      "id": "radical-premise",
+      "x": 0,
+      "y": -150,
+      "w": 400,
+      "page": "page-2",
+      "text": "Round 2 breaks the formula, not just the paint:\n4 \u00b7 Island \u2014 Liquid-Glass world, queue as a Dynamic-Island pill.\n5 \u00b7 Flight Control \u2014 the pipeline IS the app; browsing demoted to rails.\n6 \u00b7 Commander \u2014 AI-native, no panes: one command field + activity cards (classic panes one keystroke away).\nAny of these can keep Studio (2) as the calm base theme underneath."
+    },
+    {
+      "id": "color-premise",
+      "x": 2100,
+      "y": 0,
+      "w": 340,
+      "page": "page-3",
+      "text": "DECIDED: Clay is the default theme, Cobalt the selectable light alternative, Iris the dark scheme \u2014 all user-selectable like today's four themes.\nSame mini-UI, six palettes \u2014 the hex chips at the bottom of each board are the actual tokens I'll install."
+    },
+    {
+      "id": "product-plan",
+      "x": 0,
+      "y": -170,
+      "w": 420,
+      "page": "page-4",
+      "text": "The agreed shape: Studio dual-pane is the default Browse mode \u2014 efficient find-and-queue, with Island's big omnibar up top. Once transfers are running, the Browse/Flight toggle lights up and flips to the Flight Control pipeline view (here re-skinned into Studio's light language).\nDouble-click on a remote file already queues it into the other pane's folder \u2014 shipped behavior.\nStill open: the accent color \u2014 pick one on the Color page."
+    },
+    {
+      "id": "round5-premise",
+      "x": 2720,
+      "y": 0,
+      "w": 380,
+      "page": "page-5",
+      "text": "Four more radical structures, all in the Studio/Clay-ready light language:\n7 \u00b7 Deck \u2014 bento home: the night's work at a glance, browse one toggle away.\n8 \u00b7 Timeline \u2014 transfers as a chronological story with inline actions.\n9 \u00b7 Starmap \u2014 sites as islands on a map; drag files onto a node, routes fly.\n10 \u00b7 Ambient Widget \u2014 minimized warpseed becomes an always-on-top pill.\nThese can be extra modes beside Browse/Flight, or stay ideas."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-5"
+  }
+}

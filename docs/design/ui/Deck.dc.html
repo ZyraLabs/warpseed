@@ -1,0 +1,96 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #f2efe9; font-family: "Instrument Sans", "Segoe UI", sans-serif; color: #232733; }
+    a { color: #0e7c86; } a:hover { color: #0a5b63; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: #f2efe9; display: flex; flex-direction: column; gap: 14px; padding: 16px 18px;">
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <svg width="20" height="20" viewBox="0 0 96 96" fill="none"><path d="M18 26 L40 48 L18 70" stroke="#232733" stroke-opacity="0.3" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path><path d="M46 26 L68 48 L46 70" stroke="#0e7c86" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+    <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 17px;">warpseed</span>
+    <span style="display: inline-flex; align-items: center; gap: 9px; flex: 1; max-width: 430px; background: #ffffff; border: 1px solid #e5e1d8; border-radius: 12px; padding: 10px 16px; font-size: 13px; color: #9aa0ae;">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="3.8" stroke="#9aa0ae" stroke-width="1.6"></circle><path d="M9.9 9.9 L13 13" stroke="#9aa0ae" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      Search files, sites — or type a command…
+    </span>
+    <span style="flex: 1;"></span>
+    <span style="display: inline-flex; background: #ffffff; border: 1px solid #e5e1d8; border-radius: 10px; padding: 3px;"><span style="display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; background: #0e7c86; color: #ffffff; border-radius: 8px; padding: 5px 14px;">Deck</span><span style="display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; color: #6f7686; border-radius: 8px; padding: 5px 14px;">Browse</span><span style="display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; color: #6f7686; border-radius: 8px; padding: 5px 14px;">Flight</span></span>
+  </div>
+  <div style="flex: 1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); gap: 14px; min-height: 0;">
+    <div style="grid-column: span 2; background: #16181d; color: #f2f0ea; border-radius: 20px; padding: 22px 26px; display: flex; align-items: center; gap: 24px; box-shadow: 0 18px 44px #16181d2e;">
+      <svg width="104" height="104" viewBox="0 0 100 100" fill="none">
+        <circle cx="50" cy="50" r="42" stroke="#ffffff22" stroke-width="8"></circle>
+        <circle cx="50" cy="50" r="42" stroke="#4fd8e8" stroke-width="8" stroke-linecap="round" stroke-dasharray="264" stroke-dashoffset="63" transform="rotate(-90 50 50)"></circle>
+        <text x="50" y="47" text-anchor="middle" fill="#f2f0ea" font-family="Instrument Sans, sans-serif" font-weight="700" font-size="20">76%</text>
+        <text x="50" y="64" text-anchor="middle" fill="#8a92a3" font-family="IBM Plex Mono, monospace" font-size="9">4 LANES</text>
+      </svg>
+      <span style="flex: 1; display: flex; flex-direction: column; gap: 9px; min-width: 0;">
+        <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.14em; color: #8a92a3;">Now transferring · 2 of 7</span>
+        <span style="font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">ubuntu-24.04.2-desktop-amd64.iso</span>
+        <span style="font-size: 13px; color: #8a92a3;">hyperion → D:\Media\Incoming · 4:12 remaining</span>
+        <span style="display: inline-flex; gap: 4px;">
+          <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 92%; background: #4fd8e8; border-radius: 3px;"></span></span>
+          <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 74%; background: #4fd8e8; border-radius: 3px;"></span></span>
+          <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 81%; background: #4fd8e8; border-radius: 3px;"></span></span>
+          <span style="flex: 1; height: 5px; border-radius: 3px; background: #ffffff1f; overflow: hidden; display: inline-flex;"><span style="width: 58%; background: #4fd8e8; border-radius: 3px;"></span></span>
+        </span>
+      </span>
+      <span style="font-family: 'IBM Plex Mono', monospace; font-size: 24px; font-weight: 500; color: #4fd8e8; white-space: nowrap;">38.2 MB/s</span>
+    </div>
+    <div style="background: #ffffff; border: 1px solid #e5e1d8; border-radius: 20px; padding: 20px 22px; display: flex; flex-direction: column; gap: 9px;">
+      <span style="font-size: 12px; color: #0e7c86; font-weight: 600;">New on hyperion · 3</span>
+      <span style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: #3d4350;">
+        <span style="display: flex; justify-content: space-between;"><span>fedora-42-workstation-live.iso</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9aa0ae;">2.4 GB</span></span>
+        <span style="display: flex; justify-content: space-between;"><span>raspios-bookworm-full.img.xz</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9aa0ae;">2.7 GB</span></span>
+        <span style="display: flex; justify-content: space-between;"><span>site-backup-2026-08.tar.zst</span><span style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #9aa0ae;">840 MB</span></span>
+      </span>
+      <span style="flex: 1;"></span>
+      <span style="display: inline-flex;"><span style="font-size: 12.5px; font-weight: 600; background: #0e7c86; color: #ffffff; border-radius: 10px; padding: 8px 16px;">Grab all three</span></span>
+    </div>
+    <div style="background: #ffffff; border: 1px solid #e5e1d8; border-radius: 20px; padding: 20px 22px; display: flex; flex-direction: column; gap: 6px;">
+      <span style="font-size: 12px; color: #6f7686;">Throughput · last hour</span>
+      <span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px;">41.7 <span style="font-size: 14px; color: #6f7686; font-weight: 600;">MB/s</span></span>
+      <svg width="100%" height="70" viewBox="0 0 300 70" preserveAspectRatio="none" fill="none"><path d="M0 62 L25 60 L50 62 L75 46 L100 50 L125 30 L150 34 L175 18 L200 24 L225 20 L250 27 L275 16 L300 20 L300 70 L0 70 Z" fill="#0e7c86" opacity="0.14"></path><path d="M0 62 L25 60 L50 62 L75 46 L100 50 L125 30 L150 34 L175 18 L200 24 L225 20 L250 27 L275 16 L300 20" stroke="#0e7c86" stroke-width="2.5" stroke-linejoin="round"></path></svg>
+      <span style="font-size: 11.5px; color: #9aa0ae;">peak 48.9 · avg 39.1 · 8 connections</span>
+    </div>
+    <div style="background: #ffffff; border: 1px solid #e5e1d8; border-radius: 20px; padding: 20px 22px; display: flex; flex-direction: column; gap: 9px;">
+      <span style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #c94f5e; font-weight: 600;">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M8 2 L14.5 13.5 H1.5 Z" stroke="#c94f5e" stroke-width="1.4" stroke-linejoin="round"></path><path d="M8 6.5 V9.7" stroke="#c94f5e" stroke-width="1.4" stroke-linecap="round"></path><circle cx="8" cy="11.7" r="0.8" fill="#c94f5e"></circle></svg>
+        Needs attention
+      </span>
+      <span style="font-size: 14px; font-weight: 600;">arch-2026.08.01-x86_64.iso</span>
+      <span style="font-size: 12.5px; color: #6f7686; line-height: 1.5;">Connection reset at 64% — retrying in 12 s. Bytes are safe; it resumes where it stopped.</span>
+      <span style="flex: 1;"></span>
+      <span style="display: inline-flex; gap: 8px;">
+        <span style="font-size: 12.5px; font-weight: 600; background: #16181d; color: #faf8f4; border-radius: 10px; padding: 7px 15px;">Retry now</span>
+        <span style="font-size: 12.5px; font-weight: 600; border: 1px solid #e5e1d8; border-radius: 10px; padding: 7px 15px; color: #3d4350;">Skip</span>
+      </span>
+    </div>
+    <div style="background: #ffffff; border: 1px solid #e5e1d8; border-radius: 20px; padding: 20px 22px; display: flex; flex-direction: column; gap: 8px;">
+      <span style="font-size: 12px; color: #6f7686;">D:\ Media drive</span>
+      <span style="display: flex; align-items: baseline; gap: 8px;"><span style="font-family: 'Bricolage Grotesque', sans-serif; font-weight: 700; font-size: 30px;">41 GB</span><span style="font-size: 13px; color: #6f7686;">free of 2 TB</span></span>
+      <span style="height: 10px; border-radius: 5px; background: #f2efe9; overflow: hidden; display: flex;"><span style="width: 86%; background: linear-gradient(90deg, #0e7c86, #3aa7b0); border-radius: 5px;"></span></span>
+      <span style="font-size: 11.5px; color: #9aa0ae;">Tonight will add ~13 GB · fits comfortably</span>
+      <span style="flex: 1;"></span>
+      <span style="font-size: 12px; color: #6f7686;">Tonight so far: <span style="font-weight: 600; color: #232733;">14.2 GB · 6 files · 0 errors</span></span>
+    </div>
+      </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>

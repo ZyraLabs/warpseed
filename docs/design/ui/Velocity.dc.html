@@ -1,0 +1,236 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira:wght@500;600;700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; background: #0d1017; font-family: "Instrument Sans", "Segoe UI", sans-serif; color: #e8eaf0; }
+    a { color: #3fd4e2; } a:hover { color: #7ce4ee; }
+  </style>
+</helmet>
+<div style="width: 1280px; height: 800px; box-sizing: border-box; background: #0d1017; display: flex; flex-direction: column; gap: 10px; padding: 12px 14px;">
+
+  <div style="display: flex; align-items: center; gap: 14px; height: 44px; padding: 0 6px;">
+    <span style="display: inline-flex; align-items: center; gap: 8px; font-family: 'Saira', sans-serif; font-weight: 600; font-size: 17px; letter-spacing: 0.02em;">
+      <svg width="20" height="20" viewBox="0 0 96 96" fill="none"><path d="M18 26 L40 48 L18 70" stroke="#e8eaf0" stroke-opacity="0.45" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path><path d="M46 26 L68 48 L46 70" stroke="#3fd4e2" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      warp<span style="color: #3fd4e2;">seed</span>
+    </span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; background: #161b26; border: 1px solid #232a3a; border-radius: 9px; padding: 6px 14px; font-size: 12.5px; color: #c6cbd9;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: #55e0a0; box-shadow: 0 0 6px #55e0a066;"></span>
+      hyperion.seedhost.eu
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4.5 4.5 L11.5 11.5 M11.5 4.5 L4.5 11.5" stroke="#6d7488" stroke-width="1.6" stroke-linecap="round"></path></svg>
+    </span>
+    <span style="display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 8px; background: #12151f; border: 1px solid #232a3a; color: #8b93a7; font-size: 15px;">+</span>
+    <span style="flex: 1;"></span>
+    <span style="display: inline-flex; align-items: center; gap: 8px; background: #12151f; border: 1px solid #232a3a; border-radius: 9px; padding: 6px 12px; font-size: 12px; color: #6d7488;">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><circle cx="7" cy="7" r="3.8" stroke="#6d7488" stroke-width="1.6"></circle><path d="M9.9 9.9 L13 13" stroke="#6d7488" stroke-width="1.6" stroke-linecap="round"></path></svg>
+      Search or command…
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 10px; background: #1c2230; border-radius: 4px; padding: 2px 6px; color: #8b93a7;">Ctrl K</span>
+    </span>
+    <span style="display: inline-flex; align-items: center; gap: 7px; background: #3fd4e2; color: #0b1016; border-radius: 9px; padding: 7px 16px; font-size: 13px; font-weight: 600; box-shadow: 0 2px 14px #3fd4e24d;">
+      <svg width="13" height="13" viewBox="0 0 96 96" fill="none"><path d="M30 22 L58 48 L30 74" stroke="#0b1016" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      Connect
+    </span>
+    <span style="display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 9px; background: #12151f; border: 1px solid #232a3a;">
+      <svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2.5 4.5 H13.5 M2.5 8 H13.5 M2.5 11.5 H13.5" stroke="#8b93a7" stroke-width="1.6" stroke-linecap="round"></path><circle cx="10.5" cy="4.5" r="1.7" fill="#12151f" stroke="#8b93a7" stroke-width="1.4"></circle><circle cx="5.5" cy="8" r="1.7" fill="#12151f" stroke="#8b93a7" stroke-width="1.4"></circle><circle cx="9" cy="11.5" r="1.7" fill="#12151f" stroke="#8b93a7" stroke-width="1.4"></circle></svg>
+    </span>
+  </div>
+
+  <div style="flex: 1; display: flex; gap: 10px; min-height: 0;">
+
+    <div style="flex: 1; display: flex; flex-direction: column; background: #141926; border: 1px solid #2c9fb04d; border-radius: 13px; box-shadow: 0 8px 28px #00000059, 0 0 0 1px #3fd4e21f; overflow: hidden;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #1e2433;">
+        <span style="display: inline-flex; align-items: center; gap: 7px; background: #1c2230; border-radius: 8px; padding: 5px 11px; font-size: 12.5px; font-weight: 500; color: #e8eaf0;">
+          <span style="width: 6px; height: 6px; border-radius: 50%; background: #55e0a0;"></span>
+          hyperion.seedhost.eu
+        </span>
+        <span style="display: inline-flex; gap: 2px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #8b93a7;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M9.5 3.5 L5.5 8 L9.5 12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #4d5468;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6.5 3.5 L10.5 8 L6.5 12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #8b93a7;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 12.5 V3.5 M4.5 7 L8 3.5 L11.5 7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #8b93a7;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 8 A5 5 0 1 1 10.5 3.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path><path d="M10.5 1.5 V4 H13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+        </span>
+        <span style="flex: 1; display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #8b93a7; background: #10141d; border-radius: 8px; padding: 6px 12px;">
+          home <span style="color: #4d5468;">/</span> fred <span style="color: #4d5468;">/</span> <span style="color: #e8eaf0; font-weight: 500;">files</span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 40px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; color: #5b6275; border-bottom: 1px solid #1e2433;">
+        <span style="flex: 1;">Name</span><span style="width: 70px; text-align: right;">Size</span><span style="width: 92px; text-align: right;">Modified</span>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; padding: 4px 6px; font-size: 13px;">
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; color: #e8eaf0;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 5 A1.3 1.3 0 0 1 3.3 3.7 H6 L7.6 5.4 H12.7 A1.3 1.3 0 0 1 14 6.7 V11.4 A1.3 1.3 0 0 1 12.7 12.7 H3.3 A1.3 1.3 0 0 1 2 11.4 Z" fill="#3fd4e2" fill-opacity="0.25" stroke="#3fd4e2" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; font-weight: 500;">completed</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5b6275;">—</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 21 09:14</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; color: #e8eaf0;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 5 A1.3 1.3 0 0 1 3.3 3.7 H6 L7.6 5.4 H12.7 A1.3 1.3 0 0 1 14 6.7 V11.4 A1.3 1.3 0 0 1 12.7 12.7 H3.3 A1.3 1.3 0 0 1 2 11.4 Z" fill="#3fd4e2" fill-opacity="0.25" stroke="#3fd4e2" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; font-weight: 500;">isos</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5b6275;">—</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 20 23:02</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; background: #3fd4e21c; box-shadow: inset 2px 0 0 #3fd4e2; color: #e8eaf0;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.4" stroke="#9aa1b5" stroke-width="1.4"></circle><circle cx="8" cy="8" r="1.6" fill="#9aa1b5"></circle></svg>
+          <span style="flex: 1;">ubuntu-24.04.2-desktop-amd64.iso</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #c6cbd9;">5.8 GB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 20 21:48</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; background: #3fd4e21c; box-shadow: inset 2px 0 0 #3fd4e2; color: #e8eaf0;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.4" stroke="#9aa1b5" stroke-width="1.4"></circle><circle cx="8" cy="8" r="1.6" fill="#9aa1b5"></circle></svg>
+          <span style="flex: 1;">debian-13.1-dvd-amd64.iso</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #c6cbd9;">4.7 GB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 20 18:30</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; background: #1d2432; outline: 1px solid #3fd4e266; color: #ffffff;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.4" stroke="#9aa1b5" stroke-width="1.4"></circle><circle cx="8" cy="8" r="1.6" fill="#9aa1b5"></circle></svg>
+          <span style="flex: 1; font-weight: 500;">fedora-42-workstation-live.iso</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #c6cbd9;">2.4 GB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 19 22:41</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; color: #c6cbd9;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.6" y="3" width="10.8" height="10" rx="1.4" stroke="#9aa1b5" stroke-width="1.4"></rect><path d="M2.6 6 H13.4 M7 8.7 H9" stroke="#9aa1b5" stroke-width="1.4" stroke-linecap="round"></path></svg>
+          <span style="flex: 1;">raspios-bookworm-full.img.xz</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">2.7 GB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 18 07:12</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; color: #c6cbd9;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.4" stroke="#9aa1b5" stroke-width="1.4"></circle><circle cx="8" cy="8" r="1.6" fill="#9aa1b5"></circle></svg>
+          <span style="flex: 1;">mint-22.2-cinnamon-64bit.iso</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">2.9 GB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 16 02:55</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px; color: #c6cbd9;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.6" y="3" width="10.8" height="10" rx="1.4" stroke="#9aa1b5" stroke-width="1.4"></rect><path d="M2.6 6 H13.4 M7 8.7 H9" stroke="#9aa1b5" stroke-width="1.4" stroke-linecap="round"></path></svg>
+          <span style="flex: 1;">site-backup-2026-08.tar.zst</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">840 MB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 14 04:20</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-top: 1px solid #1e2433; font-size: 11.5px; color: #8b93a7;">
+        <span style="color: #3fd4e2; font-weight: 500;">2 marked · 10.5 GB</span><span style="flex: 1;"></span><span>8 items</span>
+      </div>
+    </div>
+
+    <div style="flex: 1; display: flex; flex-direction: column; background: #12161f; border: 1px solid #1e2433; border-radius: 13px; box-shadow: 0 6px 20px #00000040; overflow: hidden;">
+      <div style="display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid #1c2230;">
+        <span style="display: inline-flex; align-items: center; gap: 7px; background: #191e2a; border-radius: 8px; padding: 5px 11px; font-size: 12.5px; font-weight: 500; color: #c6cbd9;">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="2.4" y="3.6" width="11.2" height="7.6" rx="1.2" stroke="#8b93a7" stroke-width="1.4"></rect><path d="M5.5 13 H10.5" stroke="#8b93a7" stroke-width="1.4" stroke-linecap="round"></path></svg>
+          This PC
+        </span>
+        <span style="display: inline-flex; gap: 2px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #8b93a7;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M9.5 3.5 L5.5 8 L9.5 12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #4d5468;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M6.5 3.5 L10.5 8 L6.5 12.5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #8b93a7;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 12.5 V3.5 M4.5 7 L8 3.5 L11.5 7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 7px; color: #8b93a7;"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M13 8 A5 5 0 1 1 10.5 3.7" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"></path><path d="M10.5 1.5 V4 H13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg></span>
+        </span>
+        <span style="flex: 1; display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: #8b93a7; background: #0f131b; border-radius: 8px; padding: 6px 12px;">
+          D: <span style="color: #4d5468;">\</span> Media <span style="color: #4d5468;">\</span> <span style="color: #c6cbd9; font-weight: 500;">Incoming</span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 6px 14px 6px 40px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; color: #5b6275; border-bottom: 1px solid #1c2230;">
+        <span style="flex: 1;">Name</span><span style="width: 70px; text-align: right;">Size</span><span style="width: 92px; text-align: right;">Modified</span>
+      </div>
+      <div style="flex: 1; display: flex; flex-direction: column; padding: 4px 6px; font-size: 13px; color: #c6cbd9;">
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 5 A1.3 1.3 0 0 1 3.3 3.7 H6 L7.6 5.4 H12.7 A1.3 1.3 0 0 1 14 6.7 V11.4 A1.3 1.3 0 0 1 12.7 12.7 H3.3 A1.3 1.3 0 0 1 2 11.4 Z" fill="#8b93a7" fill-opacity="0.2" stroke="#8b93a7" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; font-weight: 500;">Films</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5b6275;">—</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 21 08:02</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 5 A1.3 1.3 0 0 1 3.3 3.7 H6 L7.6 5.4 H12.7 A1.3 1.3 0 0 1 14 6.7 V11.4 A1.3 1.3 0 0 1 12.7 12.7 H3.3 A1.3 1.3 0 0 1 2 11.4 Z" fill="#8b93a7" fill-opacity="0.2" stroke="#8b93a7" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; font-weight: 500;">Music</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5b6275;">—</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 19 19:44</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 5 A1.3 1.3 0 0 1 3.3 3.7 H6 L7.6 5.4 H12.7 A1.3 1.3 0 0 1 14 6.7 V11.4 A1.3 1.3 0 0 1 12.7 12.7 H3.3 A1.3 1.3 0 0 1 2 11.4 Z" fill="#8b93a7" fill-opacity="0.2" stroke="#8b93a7" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+          <span style="flex: 1; font-weight: 500;">Books</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #5b6275;">—</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 12 16:20</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5.4" stroke="#9aa1b5" stroke-width="1.4"></circle><circle cx="8" cy="8" r="1.6" fill="#9aa1b5"></circle></svg>
+          <span style="flex: 1;">arch-2026.08.01-x86_64.iso</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">1.2 GB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 21 09:31</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; height: 30px; padding: 0 8px; border-radius: 8px;">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="2.6" y="3" width="10.8" height="10" rx="1.4" stroke="#9aa1b5" stroke-width="1.4"></rect><path d="M2.6 6 H13.4 M7 8.7 H9" stroke="#9aa1b5" stroke-width="1.4" stroke-linecap="round"></path></svg>
+          <span style="flex: 1;">photos-export-2026.zip</span><span style="width: 70px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">3.1 GB</span><span style="width: 92px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #8b93a7;">Aug 10 11:08</span>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px; padding: 7px 14px; border-top: 1px solid #1c2230; font-size: 11.5px; color: #8b93a7;">
+        <span>5 items · 41 GB free</span><span style="flex: 1;"></span>
+      </div>
+    </div>
+  </div>
+
+  <div style="background: #141926; border: 1px solid #1e2433; border-radius: 13px; box-shadow: 0 8px 28px #00000059; overflow: hidden;">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 9px 16px; border-bottom: 1px solid #1e2433;">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3.5 10 L8 5.5 L12.5 10" stroke="#8b93a7" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+      <span style="width: 160px; height: 5px; border-radius: 3px; background: #1c2230; overflow: hidden; display: inline-flex;"><span style="width: 62%; background: #3fd4e2; border-radius: 3px;"></span></span>
+      <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px; font-weight: 500; color: #3fd4e2;">41.7 MB/s</span>
+      <span style="font-size: 12px; color: #8b93a7;">2 active · 5 queued</span>
+      <span style="display: inline-flex; align-items: center; gap: 5px; background: #e0556722; border-radius: 6px; padding: 2px 9px; font-size: 11px; color: #ff7d8c;">
+        <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M8 2 L14.5 13.5 H1.5 Z" stroke="#ff7d8c" stroke-width="1.4" stroke-linejoin="round"></path><path d="M8 6.5 V9.7" stroke="#ff7d8c" stroke-width="1.4" stroke-linecap="round"></path><circle cx="8" cy="11.7" r="0.8" fill="#ff7d8c"></circle></svg>
+        1 failed
+      </span>
+      <span style="flex: 1;"></span>
+      <span style="font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em; color: #5b6275;">Queue</span>
+    </div>
+    <div style="display: flex; flex-direction: column; padding: 6px 8px; font-size: 12.5px;">
+      <div style="display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 8px; border-radius: 8px; color: #e8eaf0;">
+        <svg width="13" height="13" viewBox="0 0 96 96" fill="none"><path d="M30 22 L58 48 L30 74" stroke="#3fd4e2" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">ubuntu-24.04.2-desktop-amd64.iso</span>
+        <span style="width: 160px; color: #8b93a7; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">→ D:\Media\Incoming</span>
+        <span style="flex: 1; display: inline-flex; gap: 3px;">
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #1c2230; overflow: hidden; display: inline-flex;"><span style="width: 92%; background: #3fd4e2; border-radius: 3px;"></span></span>
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #1c2230; overflow: hidden; display: inline-flex;"><span style="width: 74%; background: #3fd4e2; border-radius: 3px;"></span></span>
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #1c2230; overflow: hidden; display: inline-flex;"><span style="width: 81%; background: #3fd4e2; border-radius: 3px;"></span></span>
+          <span style="flex: 1; height: 6px; border-radius: 3px; background: #1c2230; overflow: hidden; display: inline-flex;"><span style="width: 58%; background: #3fd4e2; border-radius: 3px;"></span></span>
+        </span>
+        <span style="width: 90px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #3fd4e2;">38.2 MB/s</span>
+        <span style="width: 44px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;">76%</span>
+        <span style="display: inline-flex; gap: 4px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #1c2230;"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M5.5 3.5 V12.5 M10.5 3.5 V12.5" stroke="#c6cbd9" stroke-width="2" stroke-linecap="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #1c2230;"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4.5 4.5 L11.5 11.5 M11.5 4.5 L4.5 11.5" stroke="#c6cbd9" stroke-width="1.8" stroke-linecap="round"></path></svg></span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 8px; border-radius: 8px; color: #c6cbd9;">
+        <svg width="13" height="13" viewBox="0 0 96 96" fill="none"><path d="M30 22 L58 48 L30 74" stroke="#3fd4e2" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">debian-13.1-dvd-amd64.iso</span>
+        <span style="width: 160px; color: #8b93a7; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">→ D:\Media\Incoming</span>
+        <span style="flex: 1; height: 6px; border-radius: 3px; background: #1c2230; overflow: hidden; display: inline-flex;"><span style="width: 22%; background: #3fd4e2; border-radius: 3px;"></span></span>
+        <span style="width: 90px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #3fd4e2;">3.5 MB/s</span>
+        <span style="width: 44px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;">22%</span>
+        <span style="display: inline-flex; gap: 4px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #1c2230;"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M5.5 3.5 V12.5 M10.5 3.5 V12.5" stroke="#c6cbd9" stroke-width="2" stroke-linecap="round"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #1c2230;"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4.5 4.5 L11.5 11.5 M11.5 4.5 L4.5 11.5" stroke="#c6cbd9" stroke-width="1.8" stroke-linecap="round"></path></svg></span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 8px; border-radius: 8px; background: #e0556710; color: #c6cbd9;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 2 L14.5 13.5 H1.5 Z" stroke="#ff7d8c" stroke-width="1.4" stroke-linejoin="round"></path><path d="M8 6.5 V9.7" stroke="#ff7d8c" stroke-width="1.4" stroke-linecap="round"></path><circle cx="8" cy="11.7" r="0.8" fill="#ff7d8c"></circle></svg>
+        <span style="width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">arch-2026.08.01-x86_64.iso</span>
+        <span style="flex: 1; font-size: 11.5px; color: #ff7d8c;">connection reset by peer — retrying in 12 s (attempt 2 of 5)</span>
+        <span style="width: 44px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: #8b93a7;">64%</span>
+        <span style="display: inline-flex; gap: 4px;">
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #1c2230;"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M5 3 L12 8 L5 13 Z" fill="#c6cbd9"></path></svg></span>
+          <span style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 7px; background: #1c2230;"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M4.5 4.5 L11.5 11.5 M11.5 4.5 L4.5 11.5" stroke="#c6cbd9" stroke-width="1.8" stroke-linecap="round"></path></svg></span>
+        </span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; height: 34px; padding: 0 8px; border-radius: 8px; color: #6d7488;">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 8.5 L6.5 12 L13 4.5" stroke="#55e0a0" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <span style="width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">mint-22.2-cinnamon-64bit.iso</span>
+        <span style="width: 160px; font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">→ D:\Media\Incoming</span>
+        <span style="flex: 1; height: 6px; border-radius: 3px; background: #1c2230; overflow: hidden; display: inline-flex;"><span style="width: 100%; background: #55e0a066; border-radius: 3px;"></span></span>
+        <span style="width: 90px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;">done</span>
+        <span style="width: 44px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 11.5px;">100%</span>
+        <span style="width: 52px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: flex; align-items: center; gap: 14px; height: 26px; padding: 0 10px; font-size: 11.5px; color: #8b93a7;">
+    <span style="display: inline-flex; align-items: center; gap: 7px;">
+      <span style="width: 7px; height: 7px; border-radius: 50%; background: #55e0a0;"></span>
+      hyperion · 4/4 connections
+    </span>
+    <svg width="120" height="16" viewBox="0 0 120 16" fill="none"><polyline points="0,12 10,11 20,12 30,8 40,9 50,5 60,6 70,3 80,5 90,4 100,6 110,4 120,5" stroke="#3fd4e2" stroke-width="1.5" fill="none" stroke-linejoin="round"></polyline></svg>
+    <span style="flex: 1;"></span>
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 13 C8 13 2.5 9.6 2.5 5.9 A3 3 0 0 1 8 4.2 A3 3 0 0 1 13.5 5.9 C13.5 9.6 8 13 8 13 Z" stroke="#8b93a7" stroke-width="1.4" stroke-linejoin="round"></path></svg>
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 10.5px;">db v3</span>
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {};
+  }
+}
+</script>
+</body>
+</html>
