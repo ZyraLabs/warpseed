@@ -39,7 +39,7 @@ interface UiState {
   progress: Record<number, ProgressSample>;
   queueOpen: boolean;
   settingsOpen: boolean;
-  viewMode: "browse" | "flight";
+  viewMode: "browse" | "flight" | "deck";
   sessionLog: SessionEvent[];
 
   setPane: (side: PaneSide, source: PaneSource, path: string) => void;
@@ -55,7 +55,7 @@ interface UiState {
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
-  setViewMode: (mode: "browse" | "flight") => void;
+  setViewMode: (mode: "browse" | "flight" | "deck") => void;
   pushSessionEvent: (kind: SessionEvent["kind"], text: string) => void;
 }
 

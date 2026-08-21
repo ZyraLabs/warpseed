@@ -16,6 +16,7 @@ import {
   BookmarksFor,
   DataLocation,
   DeleteBookmark,
+  DiskSpace as DiskSpaceCall,
   OpenDataFolder,
   ListLocal,
   ListRemote,
@@ -262,6 +263,14 @@ export interface DataInfo {
   folder: string;
   backups: string[];
 }
+
+export interface DiskSpace {
+  free: number;
+  total: number;
+}
+
+export const diskSpace = (path: string): Promise<DiskSpace> =>
+  DiskSpaceCall(path) as Promise<DiskSpace>;
 
 export const dataLocation = (): Promise<DataInfo> =>
   DataLocation() as unknown as Promise<DataInfo>;

@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import CommandPalette from "./components/CommandPalette";
 import FilePane from "./components/FilePane";
+import DeckView from "./components/DeckView";
 import FlightView from "./components/FlightView";
 import HostKeyDialog from "./components/HostKeyDialog";
 import { Heart, Search, Sliders, Slipstream } from "./components/Icon";
@@ -150,15 +151,22 @@ export default function App() {
           warp<span className="app__mark-accent">seed</span>
         </span>
         <span className="app__spacer" />
-        {flightAvailable && (
-          <div className="viewseg" aria-label="View mode">
-            <button
-              className={`viewseg__btn${viewMode === "browse" ? " viewseg__btn--active" : ""}`}
-              aria-pressed={viewMode === "browse"}
-              onClick={() => setViewMode("browse")}
-            >
-              Browse
-            </button>
+        <div className="viewseg" aria-label="View mode">
+          <button
+            className={`viewseg__btn${viewMode === "deck" ? " viewseg__btn--active" : ""}`}
+            aria-pressed={viewMode === "deck"}
+            onClick={() => setViewMode("deck")}
+          >
+            Deck
+          </button>
+          <button
+            className={`viewseg__btn${viewMode === "browse" ? " viewseg__btn--active" : ""}`}
+            aria-pressed={viewMode === "browse"}
+            onClick={() => setViewMode("browse")}
+          >
+            Browse
+          </button>
+          {flightAvailable && (
             <button
               className={`viewseg__btn${viewMode === "flight" ? " viewseg__btn--active" : ""}`}
               aria-pressed={viewMode === "flight"}
@@ -167,8 +175,8 @@ export default function App() {
               Flight
               {anyActive && <span className="viewseg__dot" aria-hidden="true" />}
             </button>
-          </div>
-        )}
+          )}
+        </div>
         <button
           className="omnibar"
           onClick={() => setPaletteOpen(true)}
@@ -191,14 +199,15 @@ export default function App() {
         </button>
       </header>
 
-      <main className={`app__main${viewMode === "flight" ? " app__main--flight" : ""}`}>
+      <main className="app__main">
         {/* Panes stay mounted (display:none) in flight mode so pane state,
             scroll position and virtualizer measurements survive the trip. */}
-        <div className="app__panes" hidden={viewMode === "flight"}>
+        <div className="app__panes" hidden={viewMode !== "browse"}>
           <FilePane side={0} />
           <FilePane side={1} />
         </div>
         {viewMode === "flight" && <FlightView />}
+        {viewMode === "deck" && <DeckView />}
       </main>
 
       <QueueDock />

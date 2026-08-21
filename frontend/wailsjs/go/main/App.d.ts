@@ -29,6 +29,8 @@ export function DeleteSite(arg1:number):Promise<void>;
 
 export function DisconnectSite(arg1:number):Promise<void>;
 
+export function DiskSpace(arg1:string):Promise<{free:number;total:number}>;
+
 export function EnqueueDownloads(arg1:number,arg2:Array<main.DownloadItem>,arg3:string):Promise<Array<number>>;
 
 export function EnqueueUploads(arg1:number,arg2:Array<main.UploadItem>,arg3:string):Promise<Array<number>>;

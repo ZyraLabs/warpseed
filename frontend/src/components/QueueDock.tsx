@@ -13,7 +13,8 @@ import {
   type TransferState,
 } from "../ipc";
 import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
-import { formatSize } from "../lib/format";
+import { describeTransferError as describeError, formatSize } from "../lib/format";
+import { baseName } from "../lib/path";
 import { useUiStore } from "../store";
 import {
   ArrowUp,
@@ -41,29 +42,11 @@ const STATE_ICON: Record<string, ComponentType<IconProps>> = {
   cancelled: Close,
 };
 
-function baseName(p: string): string {
-  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-  return i >= 0 ? p.slice(i + 1) : p;
-}
-
 function eta(bytes: number, size: number, rate: number): string {
   if (rate <= 0 || size <= 0 || bytes >= size) return "";
   const s = Math.round((size - bytes) / rate);
   if (s < 60) return `${s}s`;
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
-}
-
-/** Translate the engine's raw error strings into plain language where the
-    pattern is known; unknown errors pass through untouched. */
-function describeError(err: string): string {
-  const e = err.toLowerCase();
-  if (e.includes("connection reset")) return "Connection was reset by the server — resume to retry.";
-  if (e.includes("timed out") || e.includes("timeout"))
-    return "The server stopped responding — resume to retry.";
-  if (e.includes("permission denied")) return "The server refused access to this file (permission denied).";
-  if (e.includes("no space")) return "The destination disk is full — free up space, then resume.";
-  if (e.includes("no such file")) return "The file no longer exists on the server.";
-  return err;
 }
 
 /** Persistent queue dock (ux-spec §4): collapsed aggregate strip, expandable

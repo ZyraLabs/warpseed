@@ -50,6 +50,10 @@ export function DisconnectSite(arg1) {
   return window['go']['main']['App']['DisconnectSite'](arg1);
 }
 
+export function DiskSpace(arg1) {
+  return window['go']['main']['App']['DiskSpace'](arg1);
+}
+
 export function EnqueueDownloads(arg1, arg2, arg3) {
   return window['go']['main']['App']['EnqueueDownloads'](arg1, arg2, arg3);
 }

@@ -35,6 +35,12 @@ export function isAtOrUnder(child: string, parent: string, source: PaneSource): 
 }
 
 /** Keep a menu row readable: drop middle segments of a long path. */
+/** Final path element of a local or remote path (either separator). */
+export function baseName(p: string): string {
+  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
+  return i >= 0 ? p.slice(i + 1) : p;
+}
+
 export function shortenPath(p: string): string {
   if (p.length <= 44) return p;
   const parts = p.split(/[\\/]/).filter(Boolean);

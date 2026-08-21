@@ -7,6 +7,7 @@ import {
   type TransferState,
 } from "../ipc";
 import { formatSize } from "../lib/format";
+import { baseName } from "../lib/path";
 import { useUiStore } from "../store";
 import { Warning } from "./Icon";
 import "../flight.css";
@@ -29,11 +30,6 @@ const H = 330;
 const PC = { x: 560, y: 90, w: 160, h: 150 };
 const SITE_X = 40;
 const SITE_W = 160;
-
-function baseName(p: string): string {
-  const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
-  return i >= 0 ? p.slice(i + 1) : p;
-}
 
 function truncate(s: string, max: number): string {
   return s.length > max ? `${s.slice(0, max - 1)}…` : s;

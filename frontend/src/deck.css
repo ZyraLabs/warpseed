@@ -1,0 +1,177 @@
+/* Deck view: the bento home. Card grid over the app ground; the hero spans
+   two columns. All colors via tokens so the three themes just work. */
+
+.deck {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr);
+  gap: 12px;
+  padding: 2px;
+  overflow-y: auto;
+}
+
+.dcard {
+  background: var(--surface-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dcard--hero {
+  grid-column: span 2;
+  flex-direction: row;
+  align-items: center;
+  gap: 22px;
+  border-color: color-mix(in oklab, var(--accent) 30%, var(--border));
+  box-shadow: var(--shadow-1), 0 0 0 1px var(--accent-glow);
+}
+
+.dcard--warn {
+  border-color: color-mix(in oklab, var(--state-error) 35%, var(--border));
+}
+
+.dcard__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: var(--label-tracking);
+  color: var(--text-faint);
+}
+.dcard__label--accent { color: var(--accent); }
+.dcard__label--err { color: var(--state-error); }
+
+.dcard__big {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.dcard__unit {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+
+.dcard__note {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  margin: 0;
+  line-height: 1.5;
+}
+.dcard__note--err { color: var(--state-error); }
+
+/* hero */
+.dhero__ring { width: 96px; height: 96px; flex: none; }
+.dhero__track { fill: none; stroke: var(--border); stroke-width: 8; }
+.dhero__arc {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 8;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 600ms var(--ease-out, ease-out);
+}
+.dhero__pct {
+  fill: var(--text);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 20px;
+}
+.dhero__lanes {
+  fill: var(--text-faint);
+  font-family: var(--font-data);
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+.dhero__meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dhero__name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dhero__route {
+  font-size: var(--text-xs);
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dhero__lanesbar { display: flex; gap: 4px; margin-top: 2px; }
+.dhero__lane {
+  flex: 1;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.dhero__lane > span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+  transform-origin: left;
+  transition: transform 300ms linear;
+}
+.dhero__rate {
+  font-family: var(--font-data);
+  font-size: 18px;
+  color: var(--accent);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.dhero__idle { display: flex; flex-direction: column; gap: 8px; }
+
+/* lists */
+.dlist { display: flex; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+.dlist__row { display: flex; align-items: center; gap: 8px; font-size: var(--text-xs); color: var(--text-mid); }
+.dlist__ico { color: var(--text-faint); flex: none; }
+.dlist__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dlist__size { font-family: var(--font-data); font-size: var(--text-2xs); color: var(--text-faint); }
+
+/* failures */
+.dfail { display: flex; flex-direction: column; gap: 4px; }
+.dfail__why { font-size: var(--text-xs); color: var(--text-dim); margin: 0; line-height: 1.45; }
+.dfail__actions { display: flex; gap: 8px; margin-top: 2px; }
+.dfail__actions .btn { display: inline-flex; align-items: center; gap: 5px; }
+
+/* chart + gauge */
+.dchart { width: 100%; height: 64px; flex: none; }
+.dgauge {
+  height: 9px;
+  border-radius: 5px;
+  background: var(--surface-3);
+  overflow: hidden;
+  display: block;
+}
+.dgauge__fill {
+  display: block;
+  height: 100%;
+  border-radius: 5px;
+  background: var(--accent);
+}
+
+@media (max-width: 1100px) {
+  .deck { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(150px, auto); }
+  .dcard--hero { grid-column: span 2; }
+}

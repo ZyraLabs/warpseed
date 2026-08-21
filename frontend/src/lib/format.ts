@@ -15,3 +15,16 @@ export function formatSize(size: number): string {
 export function formatTime(rfc3339: string): string {
   return rfc3339.replace("T", " ").replace(/:\d\dZ?$/, "");
 }
+
+/** Translate the engine's raw error strings into plain language where the
+    pattern is known; unknown errors pass through untouched. */
+export function describeTransferError(err: string): string {
+  const e = err.toLowerCase();
+  if (e.includes("connection reset")) return "Connection was reset by the server — resume to retry.";
+  if (e.includes("timed out") || e.includes("timeout"))
+    return "The server stopped responding — resume to retry.";
+  if (e.includes("permission denied")) return "The server refused access to this file (permission denied).";
+  if (e.includes("no space")) return "The destination disk is full — free up space, then resume.";
+  if (e.includes("no such file")) return "The file no longer exists on the server.";
+  return err;
+}

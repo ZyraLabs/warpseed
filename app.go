@@ -220,6 +220,11 @@ func (a *App) LocalHome() (string, error) {
 	return localfs.Home()
 }
 
+// DiskSpace reports free/total bytes of the volume holding path (Deck view).
+func (a *App) DiskSpace(path string) (localfs.Space, error) {
+	return localfs.DiskSpace(path)
+}
+
 // SchemaVersion lets the frontend show DB health in the status bar.
 func (a *App) SchemaVersion() int {
 	if a.store == nil {
