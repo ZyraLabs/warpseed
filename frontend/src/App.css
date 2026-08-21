@@ -9,17 +9,25 @@
   background: var(--surface-0);
 }
 
-/* header */
+/* ── header (BrowseMode board: mark · seg toggle · omnibar · connect) ── */
 .app__header {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-4) var(--sp-1);
+  padding: var(--sp-3) var(--sp-4) var(--sp-2);
 }
 .app__mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--font-display);
   font-size: var(--text-lg);
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
+  color: var(--text);
+}
+.app__glyph {
+  display: block;
 }
 .app__mark-accent {
   color: var(--accent);
@@ -27,6 +35,87 @@
 .app__spacer {
   flex: 1;
 }
+
+/* Browse/Flight segmented toggle — ground track, raised card segment. */
+.viewseg {
+  display: inline-flex;
+  background: var(--surface-3);
+  border-radius: 10px;
+  padding: 3px;
+}
+.viewseg__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--text-dim);
+  border-radius: var(--radius-md);
+  padding: 4px 14px;
+  cursor: pointer;
+  transition: color var(--dur-instant), background var(--dur-instant);
+}
+.viewseg__btn:hover {
+  color: var(--text);
+}
+.viewseg__btn--active {
+  background: var(--surface-card);
+  color: var(--text);
+  box-shadow: var(--shadow-1);
+}
+.viewseg__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* Island omnibar — an inset field that is really a palette launcher. */
+.omnibar {
+  flex: 1;
+  max-width: 430px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  border: none;
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font: inherit;
+  font-size: var(--text-sm);
+  color: var(--text-faint);
+  text-align: left;
+  cursor: pointer;
+  transition: box-shadow var(--dur-instant), color var(--dur-instant);
+}
+.omnibar:hover {
+  box-shadow: inset 0 0 0 1px var(--border-strong);
+  color: var(--text-dim);
+}
+.omnibar:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 1px var(--accent), 0 0 0 3px var(--accent-glow);
+}
+.omnibar__icon {
+  flex: none;
+}
+.omnibar__hint {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.omnibar .kbd {
+  flex: none;
+  background: var(--surface-card);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -51,17 +140,24 @@
 }
 .btn--primary {
   background: var(--accent);
-  color: var(--surface-0);
+  color: var(--on-accent);
   font-weight: 600;
+  border-radius: 10px;
+  box-shadow: 0 4px 14px var(--accent-glow);
 }
 .btn--primary:hover {
   filter: brightness(1.08);
   border-color: transparent;
-  color: var(--surface-0);
+  color: var(--on-accent);
 }
 .btn--danger {
   border-color: var(--state-error);
   color: var(--state-error);
+}
+.btn--icon {
+  width: 30px;
+  padding: 0;
+  justify-content: center;
 }
 .kbd {
   font-family: var(--font-data);
@@ -72,25 +168,65 @@
   padding: 1px 5px;
 }
 
-/* panes */
+/* ── main area: panes, or flight mode ─────────────────────────────── */
+.app__main {
+  display: flex;
+  min-height: 0;
+  padding: 0 var(--sp-2);
+}
 .app__panes {
+  flex: 1;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: var(--sp-2);
-  padding: 0 var(--sp-2);
   min-height: 0;
+  min-width: 0;
+}
+.app__panes[hidden] {
+  display: none;
 }
 
-/* status bar */
+/* ── status bar ───────────────────────────────────────────────────── */
 .app__statusbar {
   display: flex;
   align-items: center;
   gap: var(--sp-4);
   padding: 5px var(--sp-4);
+  border-top: 1px solid var(--border);
   font-size: var(--text-xs);
   color: var(--text-faint);
+}
+.statusbar__conn {
+  display: inline-flex;
+  align-items: center;
+}
+
+.statusbar__heart {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--radius-xs);
+  transition: color var(--dur-instant, 100ms), transform var(--dur-instant, 100ms);
+}
+.statusbar__heart:hover {
+  color: var(--state-error);
+  transform: scale(1.2);
+}
+
+/* db version is data → mono chip; everything else in the bar is UI type. */
+.statusbar__db {
   font-family: var(--font-data);
   font-variant-numeric: tabular-nums;
+  font-size: var(--text-2xs);
+  background: var(--surface-2);
+  box-shadow: inset 0 0 0 1px var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 7px;
 }
 .app__statusbar .spacer {
   flex: 1;
@@ -107,6 +243,8 @@
   display: block;
 }
 .sparkline__label {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
   color: var(--accent);
   min-width: 72px;
 }

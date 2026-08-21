@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { list, localRoots, type PaneSource } from "../ipc";
+import { ChevronRight } from "./Icon";
 
 interface DirTreeProps {
   source: PaneSource;
@@ -65,7 +66,10 @@ function TreeNode({
             if (expanded) setChildren(null); // re-list on next expand
           }}
         >
-          {children === null && !expanded ? "▸" : expanded ? "▾" : "▸"}
+          <ChevronRight
+            size={11}
+            className={`tree__chev ${expanded ? "tree__chev--open" : ""}`}
+          />
         </span>
         <span className="tree__label">{node.label}</span>
       </button>

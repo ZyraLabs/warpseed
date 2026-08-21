@@ -1,104 +1,76 @@
-/* Theme mechanism: data-theme on <html>, Flight Deck as the no-attribute
-   fallback, System following prefers-color-scheme live. A localStorage
-   mirror lets main.tsx stamp the theme before first render (no flash); the
-   settings database remains the source of truth. */
+/* Theme mechanism: data-theme on <html>, Clay as the no-attribute fallback.
+   A localStorage mirror lets main.tsx stamp the theme before first render
+   (no flash); the settings database remains the source of truth. Legacy ids
+   (v3 themes, "dark"/"light", "system") coerce to the nearest v4 theme. */
 
-export type ThemeId = "flightdeck" | "drafting" | "press" | "nightshift";
+export type ThemeId = "clay" | "cobalt" | "iris";
+/** "system" survives in stored settings from older builds; it coerces to clay. */
 export type ThemePref = ThemeId | "system";
 
 export interface ThemeInfo {
   id: ThemePref;
   name: string;
   blurb: string;
-  /** Swatch preview: ground, panel, accent. */
+  /** Swatch preview: ground, card, accent. */
   swatch: [string, string, string];
 }
 
 /** Hex mirrors of each palette, for the picker's preview chips only —
-    the app itself always reads the oklch tokens in tokens.css. */
+    the app itself always reads the tokens in tokens.css. */
 export const THEMES: ThemeInfo[] = [
   {
-    id: "flightdeck",
-    name: "Flight Deck",
-    blurb: "Cockpit instrument — cold slate, one teal, tightest grid.",
-    swatch: ["#0b1114", "#182329", "#2fd6bd"],
+    id: "clay",
+    name: "Clay",
+    blurb: "Warm paper, cream cards, terracotta in motion.",
+    swatch: ["#f6f0e8", "#fffdf9", "#c65a33"],
   },
   {
-    id: "drafting",
-    name: "Drafting Table",
-    blurb: "Engineering drawing — cool paper, navy ink, vermilion in motion.",
-    swatch: ["#dfe6ec", "#fbfcfd", "#cf4520"],
+    id: "cobalt",
+    name: "Cobalt",
+    blurb: "Cool off-white, sharp white cards, electric blue.",
+    swatch: ["#f4f2ee", "#ffffff", "#2242ff"],
   },
   {
-    id: "press",
-    name: "Press",
-    blurb: "Bone paper, black rules, no rounding, industrial orange.",
-    swatch: ["#e6e6df", "#f6f6f1", "#f0500a"],
-  },
-  {
-    id: "nightshift",
-    name: "Nightshift",
-    blurb: "Warm dark — amber on near-black, serif chrome.",
-    swatch: ["#12100d", "#241f1a", "#e9a53f"],
-  },
-  {
-    id: "system",
-    name: "System",
-    blurb: "Follows Windows: Flight Deck when dark, Drafting Table when light.",
-    swatch: ["#12100d", "#dfe6ec", "#2fd6bd"],
+    id: "iris",
+    name: "Iris",
+    blurb: "The dark one — violet-black ground, periwinkle glow.",
+    swatch: ["#0e0b1f", "#171332", "#8b7bff"],
   },
 ];
 
 const MIRROR_KEY = "ws-theme";
-const SYSTEM_DARK: ThemeId = "flightdeck";
-const SYSTEM_LIGHT: ThemeId = "drafting";
-
-let mediaQuery: MediaQueryList | null = null;
-let mediaListener: ((e: MediaQueryListEvent) => void) | null = null;
 
 function stamp(theme: ThemeId) {
   document.documentElement.dataset.theme = theme;
 }
 
-/** Older builds stored "dark"/"light"; keep those working. */
-function coerce(value: string | null): ThemePref {
+/** Older builds stored v3 theme ids, "dark"/"light", or "system";
+    map every legacy value to its nearest v4 theme. */
+export function coerceTheme(value: string | null): ThemeId {
   switch (value) {
-    case "dark":
-      return "flightdeck";
-    case "light":
-      return "drafting";
-    case "flightdeck":
-    case "drafting":
-    case "press":
-    case "nightshift":
-    case "system":
+    case "clay":
+    case "cobalt":
+    case "iris":
       return value;
+    case "dark":
+    case "flightdeck":
+    case "nightshift":
+      return "iris";
+    case "press":
+      return "cobalt";
+    // "light", "drafting", "system" and anything unknown land on the default.
     default:
-      return "flightdeck";
+      return "clay";
   }
 }
 
 export function applyTheme(pref: ThemePref) {
-  const resolved = coerce(pref);
+  const resolved = coerceTheme(pref);
   localStorage.setItem(MIRROR_KEY, resolved);
-
-  if (mediaQuery && mediaListener) {
-    mediaQuery.removeEventListener("change", mediaListener);
-    mediaQuery = null;
-    mediaListener = null;
-  }
-
-  if (resolved === "system") {
-    mediaQuery = window.matchMedia("(prefers-color-scheme: light)");
-    mediaListener = (e) => stamp(e.matches ? SYSTEM_LIGHT : SYSTEM_DARK);
-    mediaQuery.addEventListener("change", mediaListener);
-    stamp(mediaQuery.matches ? SYSTEM_LIGHT : SYSTEM_DARK);
-  } else {
-    stamp(resolved);
-  }
+  stamp(resolved);
 }
 
 /** Called synchronously in main.tsx, before first render. */
 export function applyMirroredTheme() {
-  applyTheme(coerce(localStorage.getItem(MIRROR_KEY)));
+  applyTheme(coerceTheme(localStorage.getItem(MIRROR_KEY)));
 }

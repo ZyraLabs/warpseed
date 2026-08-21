@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { on, resolvePrompt, type HostKeyPrompt } from "../ipc";
+import { Warning } from "./Icon";
 
 /** TOFU host-key dialog (ux-spec §5.3): calm, informative, copyable
     fingerprint. Timeout on the Go side denies automatically. */
@@ -21,8 +22,13 @@ export default function HostKeyDialog() {
 
   return (
     <div className="scrim scrim--center">
-      <div className="dialog" role="alertdialog" aria-label="Unknown host key">
-        <h2>First connection to {current.host}</h2>
+      <div className="dialog dialog--hostkey" role="alertdialog" aria-label="Unknown host key">
+        <h2>
+          <span className="hk-mark">
+            <Warning size={17} />
+          </span>
+          First connection to {current.host}
+        </h2>
         <p>
           The server presented a <b>{current.algo}</b> key warpseed hasn’t seen before. Verify
           this fingerprint against one your provider published, then trust it to pin it for

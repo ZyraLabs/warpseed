@@ -7,7 +7,14 @@
   "frontend:dev:watcher": "npm run dev",
   "frontend:dev:serverUrl": "auto",
   "author": {
-    "name": "Fred",
-    "email": "technician@atriasystems.com.au"
+    "name": "Zyra Labs",
+    "email": "info@zyralabs.tech"
+  },
+  "info": {
+    "companyName": "Zyra Labs",
+    "productName": "warpseed",
+    "productVersion": "1.0.0",
+    "copyright": "Copyright © 2026 Zyra Labs",
+    "comments": "Free, fast seedbox transfer client by Zyra Labs"
   }
 }

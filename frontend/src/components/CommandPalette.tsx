@@ -1,10 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { connectAndHome, disconnectSite, getSettings, localStart } from "../ipc";
 import { useUiStore } from "../store";
 import type { PaneCmd } from "./FilePane";
+import {
+  ArrowUp,
+  Check,
+  ChevronRight,
+  Close,
+  Folder,
+  File,
+  Monitor,
+  Refresh,
+  Search,
+  Sliders,
+  Tree,
+  Warning,
+} from "./Icon";
 
 interface Item {
   label: string;
+  icon?: ReactNode;
   hint?: string;
   run: () => void | Promise<void>;
 }
@@ -41,25 +56,27 @@ export default function CommandPalette() {
       void fn();
     };
     const base: Item[] = [
-      { label: "Go up", hint: "Backspace", run: close(() => paneCmd(active, "up")) },
-      { label: "Edit path", hint: "Ctrl+L", run: close(() => paneCmd(active, "editpath")) },
-      { label: "Filter listing", hint: "Ctrl+F", run: close(() => paneCmd(active, "filter")) },
-      { label: "Refresh listing", hint: "Ctrl+R", run: close(() => paneCmd(active, "reload")) },
-      { label: "New folder…", hint: "F7", run: close(() => paneCmd(active, "mkdir")) },
-      { label: "Rename…", hint: "F2", run: close(() => paneCmd(active, "rename")) },
-      { label: "Delete selected", hint: "Del", run: close(() => paneCmd(active, "delete")) },
-      { label: "Invert marks", hint: "*", run: close(() => paneCmd(active, "invert")) },
-      { label: "Deselect all", hint: "Ctrl+Shift+A", run: close(() => paneCmd(active, "clearmarks")) },
+      { label: "Go up", icon: <ArrowUp size={15} />, hint: "Backspace", run: close(() => paneCmd(active, "up")) },
+      { label: "Edit path", icon: <Tree size={15} />, hint: "Ctrl+L", run: close(() => paneCmd(active, "editpath")) },
+      { label: "Filter listing", icon: <Search size={15} />, hint: "Ctrl+F", run: close(() => paneCmd(active, "filter")) },
+      { label: "Refresh listing", icon: <Refresh size={15} />, hint: "Ctrl+R", run: close(() => paneCmd(active, "reload")) },
+      { label: "New folder…", icon: <Folder size={15} />, hint: "F7", run: close(() => paneCmd(active, "mkdir")) },
+      { label: "Rename…", icon: <File size={15} />, hint: "F2", run: close(() => paneCmd(active, "rename")) },
+      { label: "Delete selected", icon: <Warning size={15} />, hint: "Del", run: close(() => paneCmd(active, "delete")) },
+      { label: "Invert marks", icon: <Check size={15} />, hint: "*", run: close(() => paneCmd(active, "invert")) },
+      { label: "Deselect all", icon: <Close size={15} />, hint: "Ctrl+Shift+A", run: close(() => paneCmd(active, "clearmarks")) },
       {
         label: "Switch pane to This PC",
+        icon: <Monitor size={15} />,
         run: close(async () => {
           const cfg = await getSettings().catch(() => ({}) as Record<string, string>);
           setPane(active, "local", await localStart(cfg["ui.local_default"]));
         }),
       },
-      { label: "New connection…", run: close(() => setQuickConnect(true, active)) },
+      { label: "New connection…", icon: <ChevronRight size={15} />, run: close(() => setQuickConnect(true, active)) },
       {
         label: "Settings",
+        icon: <Sliders size={15} />,
         hint: "Ctrl+,",
         run: close(() => useUiStore.getState().setSettingsOpen(true)),
       },
@@ -67,6 +84,7 @@ export default function CommandPalette() {
     for (const s of sites) {
       base.push({
         label: `Connect: ${s.name}`,
+        icon: <ChevronRight size={15} />,
         hint: `${s.username}@${s.host}`,
         run: close(async () => {
           try {
@@ -82,6 +100,7 @@ export default function CommandPalette() {
       if (connStates[s.id] === "connected") {
         base.push({
           label: `Disconnect: ${s.name}`,
+          icon: <Close size={15} />,
           run: close(() => disconnectSite(s.id)),
         });
       }
@@ -113,24 +132,27 @@ export default function CommandPalette() {
   return (
     <div className="scrim" onMouseDown={() => setOpen(false)}>
       <div className="palette" onMouseDown={(e) => e.stopPropagation()} role="dialog" aria-label="Command palette">
-        <input
-          ref={inputRef}
-          value={query}
-          placeholder="Type a command or site name…"
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-            else if (e.key === "ArrowDown") {
-              e.preventDefault();
-              setSel((s) => Math.min(s + 1, filtered.length - 1));
-            } else if (e.key === "ArrowUp") {
-              e.preventDefault();
-              setSel((s) => Math.max(s - 1, 0));
-            } else if (e.key === "Enter" && filtered[sel]) {
-              void filtered[sel].run();
-            }
-          }}
-        />
+        <div className="palette__search">
+          <Search size={15} />
+          <input
+            ref={inputRef}
+            value={query}
+            placeholder="Type a command or site name…"
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setOpen(false);
+              else if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setSel((s) => Math.min(s + 1, filtered.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setSel((s) => Math.max(s - 1, 0));
+              } else if (e.key === "Enter" && filtered[sel]) {
+                void filtered[sel].run();
+              }
+            }}
+          />
+        </div>
         <div className="palette__list">
           {filtered.length === 0 ? (
             <div className="palette__empty">No matching commands</div>
@@ -142,6 +164,7 @@ export default function CommandPalette() {
                 onMouseEnter={() => setSel(i)}
                 onClick={() => void it.run()}
               >
+                <span className="palette__icon">{it.icon}</span>
                 <span className="grow">{it.label}</span>
                 {it.hint && <span className="palette__hint">{it.hint}</span>}
               </button>

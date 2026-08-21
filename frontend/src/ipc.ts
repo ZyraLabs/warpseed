@@ -36,7 +36,10 @@ import {
   Sites,
   TransfersList,
 } from "../wailsjs/go/main/App";
-import { EventsOn } from "../wailsjs/runtime/runtime";
+import { BrowserOpenURL, EventsOn } from "../wailsjs/runtime/runtime";
+
+/** Open a URL in the user's default browser (donate/website links). */
+export const openExternal = (url: string): void => BrowserOpenURL(url);
 
 export interface FsEntry {
   name: string;

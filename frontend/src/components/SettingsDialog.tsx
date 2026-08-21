@@ -5,16 +5,19 @@ import {
   deleteSite,
   getSettings,
   openDataFolder,
+  openExternal,
   type DataInfo,
   saveSite,
   setSetting,
   sites as fetchSites,
   type Site,
 } from "../ipc";
+import { APP_VERSION, COMPANY, DONATE_URL, WEBSITE_URL } from "../lib/branding";
 import { formatSize } from "../lib/format";
 import { forgetSource } from "../lib/recents";
-import { applyTheme, THEMES, type ThemePref } from "../lib/theme";
+import { applyTheme, coerceTheme, THEMES, type ThemePref } from "../lib/theme";
 import { useUiStore } from "../store";
+import { ChevronRight, Heart } from "./Icon";
 
 const MIB = 1024 * 1024;
 
@@ -78,9 +81,8 @@ export default function SettingsDialog() {
     });
   };
 
-  const stored = cfg["ui.theme"];
-  const theme: ThemePref =
-    stored === "dark" ? "flightdeck" : stored === "light" ? "drafting" : ((stored as ThemePref) || "flightdeck");
+  // Legacy stored ids (v3 themes, "dark"/"light", "system") coerce to v4.
+  const theme: ThemePref = coerceTheme(cfg["ui.theme"] ?? null);
   const bwMode = cfg["bw.mode"] || "off";
   const observedMax = Number(cfg["bw.observed_max"] || 0);
 
@@ -299,7 +301,7 @@ export default function SettingsDialog() {
                     {s.username}@{s.host}:{s.port}
                     {s.remotePath ? ` → ${s.remotePath}` : ""}
                   </span>
-                  <span className="set-note">edit ›</span>
+                  <span className="set-note site-row__go">edit <ChevronRight size={11} /></span>
                 </div>
               ))}
             </div>
@@ -420,6 +422,24 @@ export default function SettingsDialog() {
               replays old changes over the restored copy.
             </p>
           )}
+        </section>
+
+        <section className="set-section">
+          <h3>About</h3>
+          <p className="set-note set-blurb">
+            warpseed {APP_VERSION} — a free, fast seedbox transfer client by {COMPANY}.
+            It is free and always will be; if it saves you time, a coffee keeps the
+            updates coming.
+          </p>
+          <div className="dialog__actions" style={{ marginTop: "var(--sp-2)" }}>
+            <button className="btn" onClick={() => openExternal(WEBSITE_URL)}>
+              zyralabs.tech
+            </button>
+            <span style={{ flex: 1 }} />
+            <button className="btn btn--primary" onClick={() => openExternal(DONATE_URL)}>
+              <Heart size={12} className="btn__ico" /> Support warpseed
+            </button>
+          </div>
         </section>
 
         <div className="dialog__actions">

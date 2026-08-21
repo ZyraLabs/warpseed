@@ -84,6 +84,9 @@ export default function Breadcrumb({ path, onNavigate, onSubmitPath, editReq }: 
   const segs = split(path);
   const collapsed = segs.length > 5;
   const shown = collapsed ? [segs[0], ...segs.slice(-2)] : segs;
+  // Separator matches the path flavor; the unix root "/" already reads as
+  // one, so the separator right after it is dropped.
+  const sepChar = /^[A-Za-z]:[\\/]/.test(path) ? "\\" : "/";
 
   return (
     <div
@@ -98,8 +101,15 @@ export default function Breadcrumb({ path, onNavigate, onSubmitPath, editReq }: 
     >
       {shown.map((seg, i) => (
         <span key={seg.target}>
-          {i > 0 && <span className="crumb-sep">▸</span>}
-          {collapsed && i === 1 && <span className="crumb-sep">…▸</span>}
+          {i > 0 && !(i === 1 && shown[0].label === "/") && (
+            <span className="crumb-sep">{sepChar}</span>
+          )}
+          {collapsed && i === 1 && (
+            <>
+              <span className="crumb-sep">…</span>
+              <span className="crumb-sep">{sepChar}</span>
+            </>
+          )}
           <button
             className={`crumb ${i === shown.length - 1 ? "crumb--last" : ""}`}
             onClick={() => onNavigate(seg.target)}

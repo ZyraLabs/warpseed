@@ -8,6 +8,7 @@ import {
 } from "../ipc";
 import { forgetSource } from "../lib/recents";
 import { useUiStore } from "../store";
+import { Close } from "./Icon";
 
 const EMPTY = { name: "", host: "", port: 22, username: "", password: "" };
 
@@ -101,7 +102,7 @@ export default function QuickConnect() {
                   {s.username}@{s.host}:{s.port}
                 </span>
                 <button className="del" title="Delete site" onClick={(e) => void removeSite(e, s)}>
-                  ✕
+                  <Close size={13} />
                 </button>
               </div>
             ))}

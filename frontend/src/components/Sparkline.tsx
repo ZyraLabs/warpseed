@@ -52,7 +52,7 @@ export default function Sparkline() {
       const b = buf.current;
       const max = Math.max(...b, 1);
       const styles = getComputedStyle(document.documentElement);
-      const accent = styles.getPropertyValue("--accent").trim() || "#4dd0c4";
+      const accent = styles.getPropertyValue("--accent").trim() || "#c65a33";
 
       ctx.beginPath();
       for (let i = 0; i < b.length; i++) {

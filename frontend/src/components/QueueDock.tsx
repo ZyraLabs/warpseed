@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import type { ComponentType } from "react";
 import {
   cancelTransfer,
   clearDoneTransfers,
+  getSettings,
   on,
   pauseTransfer,
   resumeTransfer,
+  setSetting,
   transfersList,
   type TransferProgress,
   type TransferState,
@@ -12,15 +15,30 @@ import {
 import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
 import { formatSize } from "../lib/format";
 import { useUiStore } from "../store";
+import {
+  ArrowUp,
+  Check,
+  ChevronRight,
+  Close,
+  Pause,
+  Play,
+  Refresh,
+  Slipstream,
+  Warning,
+  type IconProps,
+} from "./Icon";
 
-const STATE_ICON: Record<string, string> = {
-  pending: "◷",
-  dispatched: "◷",
-  active: "▶",
-  paused: "⏸",
-  completed: "✓",
-  failed: "⚠",
-  cancelled: "✕",
+/** Shared stroke icons per state (design contract: no glyph characters).
+    Queued work gets the single "up next" chevron; running states reuse the
+    playback icons so the dock reads at a glance. */
+const STATE_ICON: Record<string, ComponentType<IconProps>> = {
+  pending: ChevronRight,
+  dispatched: ChevronRight,
+  active: Play,
+  paused: Pause,
+  completed: Check,
+  failed: Warning,
+  cancelled: Close,
 };
 
 function baseName(p: string): string {
@@ -35,6 +53,19 @@ function eta(bytes: number, size: number, rate: number): string {
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
 }
 
+/** Translate the engine's raw error strings into plain language where the
+    pattern is known; unknown errors pass through untouched. */
+function describeError(err: string): string {
+  const e = err.toLowerCase();
+  if (e.includes("connection reset")) return "Connection was reset by the server — resume to retry.";
+  if (e.includes("timed out") || e.includes("timeout"))
+    return "The server stopped responding — resume to retry.";
+  if (e.includes("permission denied")) return "The server refused access to this file (permission denied).";
+  if (e.includes("no space")) return "The destination disk is full — free up space, then resume.";
+  if (e.includes("no such file")) return "The file no longer exists on the server.";
+  return err;
+}
+
 /** Persistent queue dock (ux-spec §4): collapsed aggregate strip, expandable
     row list, pause/resume/cancel with byte-resume semantics. */
 /** Resizable queue columns; the progress track absorbs the leftover space. */
@@ -45,6 +76,33 @@ const QUEUE_COLUMNS: ColumnSpec[] = [
   { id: "rate", label: "Speed / ETA", min: 60, initial: 88 },
   { id: "pct", label: "%", min: 40, initial: 52 },
 ];
+
+/** "added" is queue order (newest first, as the store returns rows). */
+type QSortKey = "added" | "state" | "name" | "dest" | "size" | "rate" | "pct";
+interface QSort {
+  key: QSortKey;
+  desc: boolean;
+}
+
+const COL_SORT: Record<string, QSortKey> = {
+  name: "name",
+  route: "dest",
+  size: "size",
+  rate: "rate",
+  pct: "pct",
+};
+
+/** Ascending state sort surfaces what needs attention: errors first, then
+    running work, with finished rows at the bottom. */
+const STATE_RANK: Record<string, number> = {
+  failed: 0,
+  active: 1,
+  paused: 2,
+  dispatched: 3,
+  pending: 4,
+  completed: 5,
+  cancelled: 6,
+};
 
 export default function QueueDock() {
   const { style: colStyle, startResize, reset } = useColumnWidths(QUEUE_COLUMNS, "ui.queue_columns");
@@ -57,6 +115,41 @@ export default function QueueDock() {
   const applyProgress = useUiStore((s) => s.applyProgress);
   const patchTransferState = useUiStore((s) => s.patchTransferState);
   const sites = useUiStore((s) => s.sites);
+  const [sort, setSort] = useState<QSort>({ key: "added", desc: false });
+  // A click during the async hydration read must win over the stale stored
+  // value (same rule prefs.ts enforces for the other UI settings).
+  const sortTouched = useRef(false);
+
+  // Hydrate the saved sort once; the click handler persists changes.
+  useEffect(() => {
+    void getSettings()
+      .then((cfg) => {
+        if (sortTouched.current) return;
+        const raw = cfg["ui.queue_sort"];
+        if (!raw) return;
+        const s = JSON.parse(raw) as Partial<QSort>;
+        const keys: QSortKey[] = ["added", "state", "name", "dest", "size", "rate", "pct"];
+        if (typeof s.key === "string" && (keys as string[]).includes(s.key)) {
+          setSort({ key: s.key, desc: s.desc === true });
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  /** Click cycles ascending → descending → back to queue order. */
+  const toggleSort = (key: QSortKey) => {
+    sortTouched.current = true;
+    setSort((prev) => {
+      const next: QSort =
+        prev.key !== key
+          ? { key, desc: false }
+          : prev.desc
+            ? { key: "added", desc: false }
+            : { key, desc: true };
+      void setSetting("ui.queue_sort", JSON.stringify(next)).catch(() => undefined);
+      return next;
+    });
+  };
 
   useEffect(() => {
     const refresh = () => void transfersList().then(setTransfers).catch(() => undefined);
@@ -90,6 +183,37 @@ export default function QueueDock() {
     };
   });
 
+  const rows = [...live];
+  if (sort.key !== "added") {
+    const dir = sort.desc ? -1 : 1;
+    const pctOf = (t: (typeof live)[number]) => (t.size > 0 ? t.bytes / t.size : 0);
+    rows.sort((a, b) => {
+      let d = 0;
+      switch (sort.key) {
+        case "name":
+          d = baseName(a.src).localeCompare(baseName(b.src), undefined, { sensitivity: "base" });
+          break;
+        case "dest":
+          d = a.dst.localeCompare(b.dst, undefined, { sensitivity: "base" });
+          break;
+        case "size":
+          d = a.size - b.size;
+          break;
+        case "rate":
+          d = a.rate - b.rate;
+          break;
+        case "pct":
+          d = pctOf(a) - pctOf(b);
+          break;
+        case "state":
+          d = (STATE_RANK[a.state] ?? 9) - (STATE_RANK[b.state] ?? 9);
+          break;
+      }
+      if (d === 0) return b.id - a.id; // ties keep queue order regardless of direction
+      return d * dir;
+    });
+  }
+
   const active = live.filter((t) => t.state === "active");
   const queued = live.filter((t) => t.state === "pending" || t.state === "dispatched");
   const failed = live.filter((t) => t.state === "failed");
@@ -104,7 +228,7 @@ export default function QueueDock() {
       onAnimationEnd={(e) => e.animationName === "warp-streak" && setStreak(false)}
     >
       <button className="dock__strip" onClick={() => setOpen(!open)} aria-expanded={open}>
-        <span>{open ? "▾" : "▴"}</span>
+        <Slipstream size={14} className="dock__glyph" />
         <span className="dock__microbar" aria-hidden>
           <div
             style={{ transform: `scaleX(${totalBytes > 0 ? doneBytes / totalBytes : 0})` }}
@@ -114,9 +238,15 @@ export default function QueueDock() {
         <span>
           {active.length} active · {queued.length} queued
         </span>
-        {failed.length > 0 && <span className="chip-failed">{failed.length} failed ⚠</span>}
+        {failed.length > 0 && (
+          <span className="chip-failed">
+            <Warning size={11} />
+            {failed.length} failed
+          </span>
+        )}
         <span className="grow" />
-        <span>queue</span>
+        <span className="dock__title">Queue</span>
+        <ChevronRight size={12} className={`dock__caret ${open ? "dock__caret--open" : ""}`} />
       </button>
 
       {open && (
@@ -124,42 +254,74 @@ export default function QueueDock() {
           <div className="dock__header">
             <span className="grow" />
             <button onClick={reset} title="Restore default column widths">
-              ⇔ Reset columns
+              <Refresh size={12} />
+              Reset columns
             </button>
-            <button onClick={() => void clearDoneTransfers()}>✕ Clear done</button>
+            <button onClick={() => void clearDoneTransfers()}>
+              <Close size={12} />
+              Clear done
+            </button>
           </div>
 
           {/* Column headers double as resize handles — drag the divider on
               the right of a heading to widen it. */}
           <div className="trow trow--head">
-            <span className="trow__icon" />
-            {QUEUE_COLUMNS.map((c) => (
-              <span key={c.id} className={`thead thead--${c.id}`}>
-                {c.label}
-                <span
-                  className="thead__grip"
-                  role="separator"
-                  aria-orientation="vertical"
-                  aria-label={`Resize ${c.label}`}
-                  onMouseDown={(e) => startResize(c.id, e)}
-                />
-              </span>
-            ))}
+            <button
+              className={`trow__icon thead__sort ${sort.key === "state" ? "thead__sort--on" : ""}`}
+              onClick={() => toggleSort("state")}
+              title="Sort by status (failed first)"
+            >
+              {sort.key === "state" ? (
+                <ArrowUp size={10} className={`thead__dir ${sort.desc ? "thead__dir--desc" : ""}`} />
+              ) : (
+                <Warning size={11} />
+              )}
+            </button>
+            {QUEUE_COLUMNS.map((c) => {
+              const key = COL_SORT[c.id];
+              return (
+                <span key={c.id} className={`thead thead--${c.id}`}>
+                  <button
+                    className={`thead__sort ${sort.key === key ? "thead__sort--on" : ""}`}
+                    onClick={() => toggleSort(key)}
+                    title={`Sort by ${c.label.toLowerCase()} — click again to reverse, again for queue order`}
+                  >
+                    {c.label}
+                    {sort.key === key && (
+                      <ArrowUp
+                        size={9}
+                        className={`thead__dir ${sort.desc ? "thead__dir--desc" : ""}`}
+                      />
+                    )}
+                  </button>
+                  <span
+                    className="thead__grip"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label={`Resize ${c.label}`}
+                    onMouseDown={(e) => startResize(c.id, e)}
+                  />
+                </span>
+              );
+            })}
             <span className="thead">Progress</span>
             <span />
           </div>
 
-          {live.length === 0 ? (
+          {rows.length === 0 ? (
             <div className="dock__empty">Nothing queued — mark files and press F5</div>
           ) : (
-            live.map((t) => {
+            rows.map((t) => {
               const pct = t.size > 0 ? Math.min(t.bytes / t.size, 1) : 0;
               const siteName = sites.find((s) => s.id === t.siteId)?.name ?? `site ${t.siteId}`;
               const hasError = t.state === "failed" && t.error;
               const lanes = t.chunks && t.chunks.length > 1 ? t.chunks : null;
+              const StateIcon = STATE_ICON[t.state] ?? ChevronRight;
               return (
                 <div key={t.id} className={`trow trow--${t.state} ${hasError ? "trow--witherror" : ""}`}>
-                  <span className="trow__icon">{STATE_ICON[t.state] ?? "·"}</span>
+                  <span className="trow__icon">
+                    <StateIcon size={13} />
+                  </span>
                   <span className="trow__name" title={t.src}>
                     {baseName(t.src)}
                   </span>
@@ -198,20 +360,20 @@ export default function QueueDock() {
                   <span className="trow__actions">
                     {t.state === "active" || t.state === "pending" ? (
                       <button title="Pause" onClick={() => void pauseTransfer(t.id)}>
-                        ⏸
+                        <Pause size={11} />
                       </button>
                     ) : t.state === "paused" || t.state === "failed" ? (
                       <button title="Resume / retry" onClick={() => void resumeTransfer(t.id)}>
-                        ▶
+                        <Play size={11} />
                       </button>
                     ) : null}
                     {!["completed", "cancelled"].includes(t.state) && (
                       <button title="Cancel" onClick={() => void cancelTransfer(t.id)}>
-                        ✕
+                        <Close size={11} />
                       </button>
                     )}
                   </span>
-                  {hasError && <span className="trow__error">{t.error}</span>}
+                  {hasError && <span className="trow__error">{describeError(t.error ?? "")}</span>}
                 </div>
               );
             })

@@ -1,170 +1,108 @@
-/* warpseed design tokens v3 — four named themes, each a complete world:
-   palette, type pairing AND density. A theme is selected by stamping
-   data-theme on <html>; Flight Deck is also the no-attribute fallback.
-   Only tokens are redefined per theme — components never name a theme. */
+/* warpseed design tokens v4 — three themes from the design boards:
+   Clay (default light), Cobalt (light), Iris (dark). A theme is selected
+   by stamping data-theme on <html>; Clay is also the no-attribute fallback.
+   Only color tokens are redefined per theme — structure (type, radii,
+   density) is shared, and components never name a theme. */
 
 :root,
-[data-theme="flightdeck"] {
-  color-scheme: dark;
-
-  /* FLIGHT DECK — cockpit instrument. Cold slate, one teal, tightest grid. */
-  --surface-0: oklch(15% 0.014 260);
-  --surface-1: oklch(20% 0.014 260);
-  --surface-2: oklch(24% 0.016 260);
-  --surface-3: oklch(29% 0.018 260);
-  --surface-4: oklch(34% 0.02 260);
-
-  --text: oklch(92% 0.006 250);
-  --text-mid: oklch(74% 0.012 250);
-  --text-dim: oklch(62% 0.014 250);
-  --text-faint: oklch(50% 0.012 250);
-
-  --accent: oklch(78% 0.14 190);
-  --accent-dim: oklch(63% 0.11 190);
-  --accent-glow: oklch(78% 0.14 190 / 0.18);
-
-  --state-done: oklch(72% 0.15 150);
-  --state-paused: oklch(78% 0.13 85);
-  --state-error: oklch(66% 0.19 25);
-
-  --border: oklch(29% 0.014 260);
-  --border-strong: oklch(41% 0.02 260);
-  --scrim: oklch(8% 0.02 260 / 0.55);
-  --shadow-1: 0 8px 24px oklch(10% 0.03 260 / 0.5);
-  --shadow-2: 0 16px 48px oklch(8% 0.03 260 / 0.55);
-
-  --font-ui: "Bahnschrift", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
-  --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
-
-  --row-h: 24px;
-  --radius-xs: 3px;
-  --radius-sm: 5px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --label-tracking: 0.1em;
-}
-
-/* DRAFTING TABLE — engineering drawing. Cool paper, navy ink, vermilion
-   only for things actually moving. The answer to "I don't love dark". */
-[data-theme="drafting"] {
+[data-theme="clay"] {
   color-scheme: light;
 
-  --surface-0: oklch(91.5% 0.008 250);
-  --surface-1: oklch(98.5% 0.003 250);
-  --surface-2: oklch(95% 0.006 250);
-  --surface-3: oklch(90% 0.011 250);
-  --surface-4: oklch(99.5% 0.002 250);
+  /* CLAY — warm paper ground, cream cards, terracotta accent. */
+  --surface-0: #f6f0e8;
+  --surface-1: #fffdf9;
+  --surface-2: #f9f3ea;
+  --surface-3: #efe6d8;
+  --surface-4: #fffefb;
+  --surface-card: #fffdf9;
 
-  --text: oklch(26% 0.035 255);
-  --text-mid: oklch(42% 0.03 255);
-  --text-dim: oklch(53% 0.025 255);
-  --text-faint: oklch(66% 0.02 255);
+  --text: #2a2620;
+  --text-mid: #5a5449;
+  --text-dim: #8a8177;
+  --text-faint: #b3aa9e;
 
-  --accent: oklch(52% 0.16 35);
-  --accent-dim: oklch(62% 0.13 35);
-  --accent-glow: oklch(58% 0.16 35 / 0.12);
+  --accent: #c65a33;
+  --accent-dim: #d07c5b;
+  --accent-glow: rgb(198 90 51 / 0.13);
+  --on-accent: #fffdf9;
 
-  --state-done: oklch(46% 0.11 165);
-  --state-paused: oklch(52% 0.11 75);
-  --state-error: oklch(48% 0.19 27);
+  --state-done: #7d9c76;
+  --state-paused: #a8842f;
+  --state-error: #c03d2f;
+  --folder: #d99b2f;
 
-  --border: oklch(83% 0.014 250);
-  --border-strong: oklch(70% 0.02 250);
-  --scrim: oklch(45% 0.03 255 / 0.3);
-  --shadow-1: 0 4px 16px oklch(35% 0.03 255 / 0.14), 0 1px 3px oklch(35% 0.03 255 / 0.1);
-  --shadow-2: 0 12px 32px oklch(35% 0.03 255 / 0.18), 0 2px 6px oklch(35% 0.03 255 / 0.1);
-
-  --font-ui: "Corbel", "Gill Sans MT", "Segoe UI", system-ui, sans-serif;
-  --font-data: "Consolas", "Cascadia Mono", ui-monospace, monospace;
-
-  --row-h: 26px;
-  --radius-xs: 2px;
-  --radius-sm: 3px;
-  --radius-md: 4px;
-  --radius-lg: 6px;
-  --label-tracking: 0.08em;
+  --border: #e6dccd;
+  --border-strong: #c9bda9;
+  --scrim: rgb(42 38 32 / 0.35);
+  --shadow-1: 0 4px 16px rgb(42 38 32 / 0.08), 0 1px 3px rgb(42 38 32 / 0.06);
+  --shadow-2: 0 12px 32px rgb(42 38 32 / 0.14), 0 2px 6px rgb(42 38 32 / 0.08);
 }
 
-/* PRESS — utilitarian and loud about it. Bone paper, black rules, zero
-   rounding, one industrial orange. Nothing decorative survives. */
-[data-theme="press"] {
+/* COBALT — cool off-white ground, pure white cards, electric blue accent. */
+[data-theme="cobalt"] {
   color-scheme: light;
 
-  --surface-0: oklch(92% 0.006 95);
-  --surface-1: oklch(97% 0.004 95);
-  --surface-2: oklch(93.5% 0.006 95);
-  --surface-3: oklch(88% 0.01 95);
-  --surface-4: oklch(99% 0.002 95);
+  --surface-0: #f4f2ee;
+  --surface-1: #ffffff;
+  --surface-2: #faf9f6;
+  --surface-3: #eae7e1;
+  --surface-4: #ffffff;
+  --surface-card: #ffffff;
 
-  --text: oklch(18% 0 0);
-  --text-mid: oklch(32% 0.004 95);
-  --text-dim: oklch(48% 0.006 95);
-  --text-faint: oklch(62% 0.008 95);
+  --text: #14161c;
+  --text-mid: #464b55;
+  --text-dim: #7c828e;
+  --text-faint: #a9adb6;
 
-  --accent: oklch(62% 0.21 45);
-  --accent-dim: oklch(55% 0.19 45);
-  --accent-glow: oklch(72% 0.17 55 / 0.3);
+  --accent: #2242ff;
+  --accent-dim: #5f77ff;
+  --accent-glow: rgb(34 66 255 / 0.11);
+  --on-accent: #ffffff;
 
-  --state-done: oklch(45% 0.14 150);
-  --state-paused: oklch(58% 0.15 75);
-  --state-error: oklch(50% 0.22 28);
+  --state-done: #1d9e5f;
+  --state-paused: #a07c1d;
+  --state-error: #d94040;
+  --folder: #7c828e;
 
-  --border: oklch(18% 0 0);
-  --border-strong: oklch(18% 0 0);
-  --scrim: oklch(18% 0 0 / 0.35);
-  --shadow-1: 4px 4px 0 oklch(18% 0 0 / 0.16);
-  --shadow-2: 8px 8px 0 oklch(18% 0 0 / 0.2);
-
-  --font-ui: "Franklin Gothic Medium", "Arial Narrow", "Segoe UI", system-ui, sans-serif;
-  --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
-
-  --row-h: 27px;
-  --radius-xs: 0px;
-  --radius-sm: 0px;
-  --radius-md: 0px;
-  --radius-lg: 0px;
-  --label-tracking: 0.12em;
+  --border: #e2dfd8;
+  --border-strong: #c0bdb4;
+  --scrim: rgb(20 22 28 / 0.35);
+  --shadow-1: 0 4px 16px rgb(20 22 28 / 0.08), 0 1px 3px rgb(20 22 28 / 0.06);
+  --shadow-2: 0 12px 32px rgb(20 22 28 / 0.14), 0 2px 6px rgb(20 22 28 / 0.08);
 }
 
-/* NIGHTSHIFT — warm dark. Near-black with brown in it, amber where teal
-   usually goes, a serif for the chrome. A mastering desk, not a terminal. */
-[data-theme="nightshift"] {
+/* IRIS — the dark one. Deep violet-black ground, indigo surfaces,
+   periwinkle accent. */
+[data-theme="iris"] {
   color-scheme: dark;
 
-  --surface-0: oklch(16% 0.012 60);
-  --surface-1: oklch(21% 0.014 55);
-  --surface-2: oklch(25% 0.016 55);
-  --surface-3: oklch(30% 0.018 52);
-  --surface-4: oklch(35% 0.02 50);
+  --surface-0: #0e0b1f;
+  --surface-1: #171332;
+  --surface-2: #1d183e;
+  --surface-3: #241e47;
+  --surface-4: #2c2556;
+  --surface-card: #171332;
 
-  --text: oklch(92% 0.018 75);
-  --text-mid: oklch(76% 0.026 70);
-  --text-dim: oklch(63% 0.03 65);
-  --text-faint: oklch(51% 0.028 62);
+  --text: #ece9ff;
+  --text-mid: #c4bde4;
+  --text-dim: #9a92c4;
+  --text-faint: #6b6494;
 
-  --accent: oklch(78% 0.13 75);
-  --accent-dim: oklch(64% 0.11 70);
-  --accent-glow: oklch(78% 0.13 75 / 0.16);
+  --accent: #8b7bff;
+  --accent-dim: #6f61d1;
+  --accent-glow: rgb(139 123 255 / 0.18);
+  --on-accent: #0e0b1f;
 
-  --state-done: oklch(76% 0.13 140);
-  --state-paused: oklch(72% 0.12 55);
-  --state-error: oklch(66% 0.18 28);
+  --state-done: #6ee7a8;
+  --state-paused: #e8b45c;
+  --state-error: #ff6e9c;
+  --folder: #9a92c4;
 
-  --border: oklch(30% 0.018 55);
-  --border-strong: oklch(42% 0.022 55);
-  --scrim: oklch(10% 0.015 55 / 0.6);
-  --shadow-1: 0 10px 28px oklch(8% 0.02 55 / 0.55);
-  --shadow-2: 0 18px 44px oklch(6% 0.02 55 / 0.6);
-
-  --font-ui: "Constantia", "Sitka Text", Georgia, serif;
-  --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
-
-  --row-h: 29px;
-  --radius-xs: 4px;
-  --radius-sm: 7px;
-  --radius-md: 11px;
-  --radius-lg: 15px;
-  --label-tracking: 0.06em;
+  --border: #272052;
+  --border-strong: #3b3275;
+  --scrim: rgb(6 4 18 / 0.6);
+  --shadow-1: 0 8px 24px rgb(4 2 16 / 0.5);
+  --shadow-2: 0 16px 48px rgb(4 2 16 / 0.55);
 }
 
 /* ── tokens shared by every theme ─────────────────────────────────── */
@@ -177,6 +115,20 @@
   --proto-ftp: oklch(70% 0.12 85);
   --proto-s3: oklch(68% 0.14 55);
   --proto-webdav: oklch(66% 0.12 300);
+
+  /* type — one pairing across all themes: Instrument Sans for UI,
+     Bricolage Grotesque for display, Cascadia Mono for data. */
+  --font-ui: "Instrument Sans", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-display: "Bricolage Grotesque", "Instrument Sans", "Segoe UI", system-ui, sans-serif;
+  --font-data: "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  /* density + shape — cards 14px, rows 30px with 8px hover radius. */
+  --row-h: 30px;
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 14px;
+  --label-tracking: 0.08em;
 
   --text-2xs: 0.6875rem;
   --text-xs: 0.75rem;

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { on } from "../ipc";
+import { Check, Disc, Warning } from "./Icon";
 
 interface Toast {
   id: number;
@@ -39,7 +40,16 @@ export default function Toasts() {
     <div className="toasts">
       {toasts.map((t) => (
         <div key={t.id} className={`toast toast--${t.kind}`} role="status">
-          {t.text}
+          <span className="toast__icon">
+            {t.kind === "error" ? (
+              <Warning size={15} />
+            ) : t.kind === "success" ? (
+              <Check size={15} />
+            ) : (
+              <Disc size={15} />
+            )}
+          </span>
+          <span className="toast__text">{t.text}</span>
         </div>
       ))}
     </div>

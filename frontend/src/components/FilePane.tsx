@@ -37,6 +37,20 @@ import { useUiStore, type PaneSide } from "../store";
 import Breadcrumb from "./Breadcrumb";
 import ContextMenu, { type MenuItem } from "./ContextMenu";
 import DirTree from "./DirTree";
+import {
+  Archive,
+  ArrowUp,
+  ChevronLeft,
+  ChevronRight,
+  Disc,
+  File as FileIcon,
+  Folder,
+  Monitor,
+  Refresh,
+  Search,
+  Tree as TreeIcon,
+  Warning,
+} from "./Icon";
 import PromptDialog, { type PromptSpec } from "./PromptDialog";
 
 function toast(kind: "info" | "error" | "success", text: string) {
@@ -45,6 +59,21 @@ function toast(kind: "info" | "error" | "success", text: string) {
 
 /** Bound on how often a pane re-lists in response to filesystem events. */
 const FS_REFRESH_COALESCE_MS = 500;
+
+/** Row height in px — must equal --row-h in tokens.css: the virtualizer
+    positions rows by this number, the CSS only paints them. */
+const ROW_H = 30;
+
+/** File-type icon per row. Matched on the final extension only, so a
+    "disc image inside an archive" name like .img.xz reads as an archive. */
+const DISC_RE = /\.(iso|img)$/i;
+const ARCHIVE_RE = /\.(zip|rar|7z|tar|gz|xz|zst)$/i;
+function typeIcon(e: FsEntry) {
+  if (e.isDir) return Folder;
+  if (DISC_RE.test(e.name)) return Disc;
+  if (ARCHIVE_RE.test(e.name)) return Archive;
+  return FileIcon;
+}
 
 /** Size and date are resizable; the name column takes what is left, so
     narrowing these two is how you give a long filename more room. */
@@ -112,6 +141,14 @@ export default function FilePane({ side }: { side: PaneSide }) {
     return sortEntries(visible, sort);
   }, [all, filter, sort]);
 
+  // Returning from flight mode (or gaining the pane via Tab) lands keyboard
+  // navigation back on this list — display:none dropped focus to <body>,
+  // which would otherwise dead-key arrows/Space/Backspace until a click.
+  const viewMode = useUiStore((s) => s.viewMode);
+  useEffect(() => {
+    if (viewMode === "browse" && isActive) scrollRef.current?.focus();
+  }, [viewMode, isActive]);
+
   // Reset selection state on navigation.
   useEffect(() => {
     setCursor(0);
@@ -128,7 +165,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const virtualizer = useVirtualizer({
     count: entries.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 26,
+    estimateSize: () => ROW_H,
     overscan: 20,
   });
 
@@ -407,6 +444,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
     const handler = (ev: Event) => {
       const { side: s, cmd } = (ev as CustomEvent<PaneCmd>).detail;
       if (s !== side) return;
+      if (useUiStore.getState().viewMode !== "browse") return; // panes hidden
       if (cmd === "up") nav.up();
       else if (cmd === "editpath") setEditReq((n) => n + 1);
       else if (cmd === "filter") setFilter((f) => (f === null ? "" : f));
@@ -428,6 +466,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
   useEffect(() => {
     if (!isActive) return;
     const handler = (e: KeyboardEvent) => {
+      // Flight mode hides the panes; their shortcuts must sleep with them —
+      // F5 would silently re-queue old marks, F7/F8 would open invisible
+      // dialogs inside a display:none subtree.
+      if (useUiStore.getState().viewMode !== "browse") return;
       const inField =
         e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
       if (e.ctrlKey && e.key.toLowerCase() === "l") {
@@ -659,6 +701,24 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const siteName =
     typeof source === "number" ? sites.find((s) => s.id === source)?.name ?? `site ${source}` : null;
 
+  /** Re-dial a remote pane's site and reload. The backend evicts dead
+      sessions, so this works after an idle timeout — unlike a plain Retry,
+      which re-lists over a connection that no longer exists. */
+  const reconnect = async () => {
+    if (typeof source !== "number") return;
+    try {
+      const site = useUiStore.getState().sites.find((s) => s.id === source);
+      const home = await connectAndHome(source, site?.remotePath);
+      // The user may have switched this pane's source while the re-dial was
+      // in flight; a stale reconnect must not yank the pane back.
+      if (useUiStore.getState().panes[side].source !== source) return;
+      setPane(side, source, home);
+      nav.reload();
+    } catch (err) {
+      toast("error", String(err));
+    }
+  };
+
   const switchSource = async (value: string) => {
     if (value === "local") {
       // Honour the saved default folder, falling back to home when it is
@@ -694,30 +754,34 @@ export default function FilePane({ side }: { side: PaneSide }) {
           title="Folder tree"
           aria-pressed={treeOpen}
         >
-          ≡
+          <TreeIcon size={14} />
         </button>
-        <select
-          className="pane__source"
-          value={typeof source === "number" ? String(source) : "local"}
-          onChange={(e) => void switchSource(e.target.value)}
-          aria-label="Pane source"
-        >
-          <option value="local">This PC</option>
-          {sites.map((s) => (
-            <option key={s.id} value={s.id}>
-              ⇅ {s.name}
-            </option>
-          ))}
-          <option value="__new__">+ Connect…</option>
-        </select>
-        {siteName && (
-          <span
-            className={`conn-dot conn-dot--${connState ?? "disconnected"}`}
-            title={`${siteName}: ${connState ?? "disconnected"}`}
-          />
-        )}
+        <span className={`pane__srcpill ${siteName ? "pane__srcpill--site" : ""}`}>
+          {siteName ? (
+            <span
+              className={`conn-dot conn-dot--${connState ?? "disconnected"}`}
+              title={`${siteName}: ${connState ?? "disconnected"}`}
+            />
+          ) : (
+            <Monitor size={13} />
+          )}
+          <select
+            className="pane__source"
+            value={typeof source === "number" ? String(source) : "local"}
+            onChange={(e) => void switchSource(e.target.value)}
+            aria-label="Pane source"
+          >
+            <option value="local">This PC</option>
+            {sites.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+            <option value="__new__">+ Connect…</option>
+          </select>
+        </span>
         <button className="pane__btn" onClick={nav.back} disabled={!nav.canBack} title="Back (Alt+←)">
-          ‹
+          <ChevronLeft size={13} />
         </button>
         <button
           className="pane__btn"
@@ -725,7 +789,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
           disabled={!nav.canForward}
           title="Forward (Alt+→)"
         >
-          ›
+          <ChevronRight size={13} />
         </button>
         <button
           className="pane__btn"
@@ -733,10 +797,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
           disabled={!nav.listing?.parent}
           title="Up (Backspace)"
         >
-          ↑
+          <ArrowUp size={13} />
         </button>
         <button className="pane__btn" onClick={nav.reload} title="Refresh (Ctrl+R)">
-          ↻
+          <Refresh size={13} />
         </button>
         <span
           className="pane__crumbwrap"
@@ -757,6 +821,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
 
       {filter !== null && (
         <div className="pane__filter">
+          <Search size={13} className="pane__filter-icon" />
           <input
             ref={filterRef}
             value={filter}
@@ -790,8 +855,14 @@ export default function FilePane({ side }: { side: PaneSide }) {
       {nav.error ? (
         <div>
           <div className="pane__error" role="alert">
+            <Warning size={15} className="pane__error-icon" />
             <p>{nav.error}</p>
-            <div>
+            <div className="pane__error-actions">
+              {typeof source === "number" && (
+                <button className="btn btn--primary" onClick={() => void reconnect()}>
+                  Reconnect
+                </button>
+              )}
               <button className="btn" onClick={nav.reload}>
                 Retry
               </button>
@@ -823,7 +894,12 @@ export default function FilePane({ side }: { side: PaneSide }) {
               title="Sort by name"
             >
               {SORT_LABEL.name}
-              {sort.key === "name" && <span className="phead__dir">{sort.desc ? "▾" : "▴"}</span>}
+              {sort.key === "name" && (
+                <ChevronRight
+                  size={9}
+                  className={`phead__dir ${sort.desc ? "phead__dir--desc" : "phead__dir--asc"}`}
+                />
+              )}
             </button>
             {PANE_COLUMNS.map((c) => {
               const key: SortKey = c.id === "psize" ? "size" : "modTime";
@@ -834,7 +910,12 @@ export default function FilePane({ side }: { side: PaneSide }) {
                   onClick={() => toggleSort(key)}
                   title={`Sort by ${c.label.toLowerCase()}`}
                 >
-                  {sort.key === key && <span className="phead__dir">{sort.desc ? "▾" : "▴"}</span>}
+                  {sort.key === key && (
+                    <ChevronRight
+                      size={9}
+                      className={`phead__dir ${sort.desc ? "phead__dir--desc" : "phead__dir--asc"}`}
+                    />
+                  )}
                   {c.label}
                   <span
                     className="phead__grip"
@@ -853,6 +934,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
           <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
             {virtualizer.getVirtualItems().map((vi) => {
               const e = entries[vi.index];
+              const RowIcon = typeIcon(e);
               const cls = [
                 "row",
                 e.isDir ? "row--dir" : "",
@@ -881,7 +963,9 @@ export default function FilePane({ side }: { side: PaneSide }) {
                   aria-selected={marks.has(e.name)}
                 >
                   <span className="row__name">
-                    <span className="row__icon">{e.isDir ? "▸" : "·"}</span>
+                    <span className={e.isDir ? "row__icon row__icon--dir" : "row__icon"}>
+                      <RowIcon size={15} />
+                    </span>
                     {e.name}
                   </span>
                   <span className="row__size">{formatSize(e.size)}</span>
