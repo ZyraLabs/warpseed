@@ -19,7 +19,7 @@ Fork rclone-ui/rclone-ui (Apache-2.0, Tauri 2 + React + TypeScript, v3.7.1 2026-
 
 **BUILD (the four deltas):** persistent queue + scheduler; SFTP-first site manager + credential layer; host-key TOFU flow; queue panel UI + progress interpolation. Plus Phase-3 fastsftp helper.
 
-## MODULE LAYOUT (repo: /home/fredxpert/DevProjects/filebeam, own git repo per workspace dossier; upstream kept as `upstream` remote)
+## MODULE LAYOUT (repo: ~/DevProjects/filebeam, own git repo per workspace dossier; upstream kept as `upstream` remote)
 
 ```
 filebeam/
@@ -111,7 +111,7 @@ Treat the fork as a **one-time booster, not a tracked dependency**: all new code
 
 ## PHASES
 ### Phase 0 — Scaffold & fork surgery (1-1.5 weeks solo)
-Create /home/fredxpert/DevProjects/filebeam as its own git repo from the rclone-ui fork (upstream kept as remote). Strip branding, mounts, scheduler, webhooks, non-Windows packaging. Rebrand, pin rclone v1.75.0 sidecar, verify sidecar spawn hardening (random port, per-launch creds, Job Object cleanup). Prove the pipeline end-to-end: Linux dev loop runs; cargo-xwin + NSIS cross-build produces an installer that boots in a Win11 VM with working dual-pane browse of an SFTP remote. CI skeleton (lint/test/cross-build on PR).
+Create ~/DevProjects/filebeam as its own git repo from the rclone-ui fork (upstream kept as remote). Strip branding, mounts, scheduler, webhooks, non-Windows packaging. Rebrand, pin rclone v1.75.0 sidecar, verify sidecar spawn hardening (random port, per-launch creds, Job Object cleanup). Prove the pipeline end-to-end: Linux dev loop runs; cargo-xwin + NSIS cross-build produces an installer that boots in a Win11 VM with working dual-pane browse of an SFTP remote. CI skeleton (lint/test/cross-build on PR).
 ### Phase 1 — MVP (SFTP-first, the four deltas) (4-6 weeks solo)
 Site manager (SFTP + S3 types) with keyring-rs Credential Manager secrets and connection-string remotes via core/obscure; russh pre-flight keyscan + TOFU HostKeyDialog + app-owned known_hosts + key-changed alarm; persistent SQLite queue + tokio scheduler (dispatch _async jobs with _group, pause=job/stop+requeue, directory-granularity resume, crash recovery, two-level retry with backoff+jitter, auto-degrade on 'administratively prohibited'); queue panel UI with interpolated progress (300ms core/stats polls → rAF lerp); tuned SFTP defaults (concurrency 128, chunk_size 255k with fallback ladder, aes-gcm ciphers); pre-dispatch overwrite policy via operations/stat. Exit criterion: daily-drivable CuteFTP replacement for SFTP — browse both panes fluidly while a multi-GB queue runs, survive app restart mid-queue.
 ### Phase 2 — v1 (breadth, polish, distribution) (3-5 weeks solo)

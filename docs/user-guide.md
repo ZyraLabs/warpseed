@@ -29,7 +29,9 @@ match what you see, that's a bug — [report it](#getting-help).
 ## Install
 
 **Requirements:** Windows 10 or 11, 64-bit, with WebView2 (preinstalled on
-Windows 11; Windows 10 will offer to install it on first run).
+Windows 11). If WebView2 is missing, warpseed offers to download it from
+Microsoft on first run — that is the only connection the app ever makes
+that isn't to a server you configured.
 
 1. Download `warpseed.exe` from the
    [latest release](https://github.com/ZyraLabs/warpseed/releases/latest).
@@ -61,7 +63,7 @@ connection…**). Pick a saved site, or fill in a new one:
 
 | Field | Notes |
 |---|---|
-| **Host** | e.g. `hyperion.seedhost.eu` |
+| **Host** | e.g. `hyperion.example.com` |
 | **Port** | `22` unless your provider says otherwise |
 | **Site name** | Optional label; defaults to the host |
 | **Username / Password** | The password is stored in **Windows Credential Manager**, never in a file |
