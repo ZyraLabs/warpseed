@@ -48,4 +48,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 )
 
-// replace github.com/wailsapp/wails/v2 v2.13.0 => /home/fredxpert/go/pkg/mod

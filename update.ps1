@@ -2,8 +2,8 @@
 # The build machine is not necessarily the machine that runs the app, so
 # this only builds; pass -Run when you do want it launched afterwards.
 #
-# Usage:  & C:\Users\Dave\warpseed\update.ps1        # update + build
-#         & C:\Users\Dave\warpseed\update.ps1 -Run   # ... and launch it
+# Usage:  & C:\path\to\warpseed\update.ps1        # update + build
+#         & C:\path\to\warpseed\update.ps1 -Run   # ... and launch it
 param(
     [switch]$Run
 )

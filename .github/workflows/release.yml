@@ -1,0 +1,65 @@
+# Tag-driven release: push a tag like v1.0.0 and this builds warpseed.exe on a
+# real Windows runner (so the Wails toolchain, resource embedding and
+# manifest are exactly what a user would build), publishes the exe plus a
+# SHA-256 checksum file, and uses docs/release/release-notes-<major.minor>.md
+# as the release body.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v2/cmd/wails@v2.13.0
+      - name: Check tag matches wails.json productVersion
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          ver=$(python3 -c "import json;print(json.load(open('wails.json'))['info']['productVersion'])")
+          if [ "$tag" != "$ver" ]; then
+            echo "::error::tag v$tag does not match wails.json productVersion $ver"; exit 1
+          fi
+      - name: Build
+        run: wails build -clean -platform windows/amd64 -o warpseed.exe
+      - name: Checksum
+        shell: bash
+        run: |
+          cd build/bin
+          sha256sum warpseed.exe > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Pick release notes
+        id: notes
+        shell: bash
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          mm="${ver%.*}"
+          for f in "docs/release/release-notes-$ver.md" "docs/release/release-notes-$mm.md"; do
+            if [ -f "$f" ]; then echo "file=$f" >> "$GITHUB_OUTPUT"; exit 0; fi
+          done
+          echo "::warning::no release notes found for $ver; using a stub body"
+          printf 'warpseed %s\n\nSee the commit history for changes.\n' "$ver" > release-body.md
+          echo "file=release-body.md" >> "$GITHUB_OUTPUT"
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: warpseed ${{ github.ref_name }}
+          body_path: ${{ steps.notes.outputs.file }}
+          files: |
+            build/bin/warpseed.exe
+            build/bin/SHA256SUMS.txt

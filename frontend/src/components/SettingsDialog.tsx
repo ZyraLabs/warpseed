@@ -12,12 +12,12 @@ import {
   sites as fetchSites,
   type Site,
 } from "../ipc";
-import { APP_VERSION, COMPANY, DONATE_URL, WEBSITE_URL } from "../lib/branding";
+import { APP_VERSION, COMPANY, DONATE_URL, WEBSITE_URL, bugReportUrl } from "../lib/branding";
 import { formatSize } from "../lib/format";
 import { forgetSource } from "../lib/recents";
 import { applyTheme, coerceTheme, THEMES, type ThemePref } from "../lib/theme";
 import { useUiStore } from "../store";
-import { ChevronRight, Heart } from "./Icon";
+import { Bug, ChevronRight, Heart } from "./Icon";
 
 const MIB = 1024 * 1024;
 
@@ -434,6 +434,9 @@ export default function SettingsDialog() {
           <div className="dialog__actions" style={{ marginTop: "var(--sp-2)" }}>
             <button className="btn" onClick={() => openExternal(WEBSITE_URL)}>
               zyralabs.tech
+            </button>
+            <button className="btn" onClick={() => openExternal(bugReportUrl())}>
+              <Bug size={12} className="btn__ico" /> Report a bug
             </button>
             <span style={{ flex: 1 }} />
             <button className="btn btn--primary" onClick={() => openExternal(DONATE_URL)}>

@@ -13,12 +13,23 @@ import {applyMirroredTheme} from './lib/theme'
 // Stamp the theme before first render — no flash (design-agent spec §4).
 applyMirroredTheme()
 
-const container = document.getElementById('root')
+// Browser-only demo: `?mock=1` (or VITE_MOCK=1) swaps the Wails bridge for
+// an in-page mock so the UI runs in a plain browser (docs screenshots,
+// design work). The chunk is only ever loaded when the flag is set.
+const wantMock =
+    new URLSearchParams(window.location.search).get('mock') === '1' ||
+    import.meta.env.VITE_MOCK === '1'
 
-const root = createRoot(container!)
+const boot = wantMock
+    ? import('./mock').then(({installMock}) => installMock())
+    : Promise.resolve()
 
-root.render(
-    <React.StrictMode>
-        <App/>
-    </React.StrictMode>
-)
+void boot.then(() => {
+    const container = document.getElementById('root')
+    const root = createRoot(container!)
+    root.render(
+        <React.StrictMode>
+            <App/>
+        </React.StrictMode>
+    )
+})

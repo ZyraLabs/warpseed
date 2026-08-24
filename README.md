@@ -22,6 +22,13 @@ Windows 11).
 > ("More info" → "Run anyway"). Verify the SHA-256 checksum published with
 > each release. Or build it yourself — see below.
 
+<p align="center">
+  <img src="docs/screenshots/deck.png" width="800" alt="warpseed Deck view">
+</p>
+
+**New here?** Read the [User Guide](docs/user-guide.md) — install, first
+connection, the four views, Hyperlane, keyboard reference, troubleshooting.
+
 ## Highlights
 
 - **Hyperlane** — one large file split across up to 16 connections at once,
@@ -39,8 +46,9 @@ Windows 11).
 
 ## Bug reports
 
-Email **bugreports@zyralabs.tech** with what happened and what you expected.
-Reports are handled on an urgency basis. This repository does not take
+Use **Settings → About → Report a bug** in the app (it pre-fills the
+version), or email **warpseed@zyralabs.tech** with what happened and what
+you expected. Reports are handled on an urgency basis. This repository does not take
 issues or pull requests — warpseed is released and supported by Zyra Labs
 directly, and the source is published so you can read exactly what runs on
 your machine.
@@ -54,6 +62,15 @@ Cross-compilable, CGO-free Go + a Vite frontend:
 wails build
 # → build/bin/warpseed.exe
 ```
+
+To run the UI in a browser with a fake backend (for screenshots or
+frontend work): `cd frontend && npm run dev`, then open
+`http://localhost:5173/?mock=1` (`&theme=cobalt|iris` to switch theme).
+
+Releases are built by [GitHub Actions](.github/workflows/release.yml) on a
+Windows runner when a `v*` tag is pushed; `release.ps1` does the same from
+a local Windows box. Every commit is type-checked, tested and
+cross-compiled by [CI](.github/workflows/ci.yml).
 
 ## License
 

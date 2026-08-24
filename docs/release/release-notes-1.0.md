@@ -24,7 +24,7 @@ queue you can trust with an overnight 50 GB run.
   Credential Manager, downloads confined to their destination folder.
 
 ## Bug reports
-Email bugreports@zyralabs.tech — handled on an urgency basis.
+Settings → About → **Report a bug** in the app, or email warpseed@zyralabs.tech — handled on an urgency basis.
 
 ## Requirements
 Windows 10/11 x64 · WebView2 (preinstalled on Windows 11)
