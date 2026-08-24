@@ -1,4 +1,4 @@
-# release.ps1 — manual release from the Windows build box (fallback for, or
+# release.ps1 - manual release from the Windows build box (fallback for, or
 # double-check against, the GitHub Actions release workflow).
 #
 # Builds warpseed.exe, writes SHA256SUMS.txt, tags the commit, and publishes
@@ -19,7 +19,7 @@ try {
     $tag = "v$version"
     Write-Host "== warpseed release $tag ==" -ForegroundColor Cyan
 
-    if (git status --porcelain) { throw "working tree is not clean — commit first" }
+    if (git status --porcelain) { throw "working tree is not clean - commit first" }
 
     wails build -clean -platform windows/amd64 -o warpseed.exe
     if ($LASTEXITCODE -ne 0) { throw "wails build failed" }
@@ -30,7 +30,7 @@ try {
     "$sum  warpseed.exe" | Set-Content -Encoding ascii $sums
     Write-Host "SHA-256: $sum" -ForegroundColor Green
 
-    if ($DryRun) { Write-Host "Dry run — not tagging or publishing."; return }
+    if ($DryRun) { Write-Host "Dry run - not tagging or publishing."; return }
 
     $notes = Join-Path $repo "docs\release\release-notes-$version.md"
     if (-not (Test-Path $notes)) {
