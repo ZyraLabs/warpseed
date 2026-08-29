@@ -74,21 +74,21 @@ const file = (name: string, size: number, minsAgo: number, mode = "-rw-r--r--"):
 });
 
 const REMOTE_DOWNLOADS: FsEntry[] = [
-  dir("Andor.S02.2160p.DSNP.WEB-DL.DDP5.1.DV.HDR.H.265-FLUX", 60 * 30),
-  dir("Severance.S02.1080p.ATVP.WEB-DL.DDP5.1.Atmos.H.264-FLUX", 60 * 55),
-  dir("The.Bear.S03.1080p.WEB-DL.DDP5.1.H.264-NTb", 60 * 24 * 2),
+  dir("blender-open-movies", 60 * 30),
+  dir("datasets", 60 * 55),
+  dir("vm-images", 60 * 24 * 2),
   dir("linux-isos", 60 * 24 * 6),
   dir("music", 60 * 24 * 14),
-  file("Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.HDR.DV.TrueHD.7.1-FraMeSToR.mkv", 24.6 * GiB, 60 * 3),
-  file("Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.HDR.DV.TrueHD.7.1-FraMeSToR.nfo", 6.2 * KiB, 60 * 3),
-  file("Oppenheimer.2023.1080p.BluRay.x264-SPARKS.mkv", 14.1 * GiB, 60 * 26),
-  file("Interstellar.2014.IMAX.2160p.UHD.BluRay.x265-TERMiNAL.mkv", 31.4 * GiB, 60 * 24 * 3),
-  file("Past.Lives.2023.1080p.WEB.H264-CUPCAKES.mkv", 5.9 * GiB, 60 * 24 * 4),
+  file("sprite-fright-2021-uhd-4096x1716-prores4444-master.mov", 24.6 * GiB, 60 * 3),
+  file("sprite-fright-2021-uhd-4096x1716-prores4444-master.mov.torrent", 6.2 * KiB, 60 * 3),
+  file("cosmos-laundromat-2015-uhd-dnxhr-hqx-master.mov", 14.1 * GiB, 60 * 26),
+  file("wikipedia-en-20260801-pages-articles-multistream.xml.bz2", 31.4 * GiB, 60 * 24 * 3),
+  file("tears-of-steel-2012-1080p-prores-master.mov", 5.9 * GiB, 60 * 24 * 4),
   file("ubuntu-24.04.3-live-server-amd64.iso", 3.1 * GiB, 60 * 7),
   file("Fedora-Workstation-Live-x86_64-42-1.1.iso", 2.3 * GiB, 60 * 11),
   file("debian-13.0.0-amd64-DVD-1.iso", 3.9 * GiB, 60 * 24),
   file("archlinux-2026.08.01-x86_64.iso", 1.2 * GiB, 60 * 24 * 5),
-  file("Big.Buck.Bunny.2008.1080p.BluRay.x264-SAMPLE.mkv", 691 * MiB, 60 * 24 * 12),
+  file("big-buck-bunny-2008-1080p-h264.mp4", 691 * MiB, 60 * 24 * 12),
   file("SHA256SUMS", 1.1 * KiB, 60 * 24),
   file("SHA256SUMS.gpg", 833, 60 * 24),
   file(".rtorrent.session.lock", 0, 2, "-rw-------"),
@@ -111,9 +111,14 @@ const REMOTE_HOME: FsEntry[] = [
   file(".profile", 807, 60 * 24 * 40),
 ];
 
-const REMOTE_SEASON = (n: number, minsAgo: number): FsEntry[] =>
+const REMOTE_PARTS = (stem: string, ext: string, n: number, minsAgo: number): FsEntry[] =>
   Array.from({ length: n }, (_, i) =>
-    file(`Episode.S0${1 + Math.floor(i / 12)}E${String((i % 12) + 1).padStart(2, "0")}.mkv`, (2.4 + (i % 3) * 0.35) * GiB, minsAgo + i * 30),
+    file(`${stem}.part${String(i + 1).padStart(2, "0")}.${ext}`, (2.4 + (i % 3) * 0.35) * GiB, minsAgo + i * 30),
+  );
+
+const VM_IMAGES = (n: number, minsAgo: number): FsEntry[] =>
+  Array.from({ length: n }, (_, i) =>
+    file(`debian-13-cloud-amd64-202608${String(i + 1).padStart(2, "0")}.qcow2`, (2.4 + (i % 3) * 0.35) * GiB, minsAgo + i * 30),
   );
 
 /** Remote tree by site id then POSIX path. */
@@ -124,17 +129,17 @@ export const REMOTE: Record<number, Record<string, FsEntry[]>> = {
     "/home/seedling": REMOTE_HOME,
     "/home/seedling/downloads": REMOTE_DOWNLOADS,
     "/home/seedling/downloads/linux-isos": REMOTE_LINUX,
-    "/home/seedling/downloads/Andor.S02.2160p.DSNP.WEB-DL.DDP5.1.DV.HDR.H.265-FLUX": [
+    "/home/seedling/downloads/blender-open-movies": [
       ...Array.from({ length: 12 }, (_, i) =>
-        file(`Andor.S02E${String(i + 1).padStart(2, "0")}.2160p.DSNP.WEB-DL.DDP5.1.DV.HDR.H.265-FLUX.mkv`, (4.1 + (i % 4) * 0.3) * GiB, 60 * 30 + i * 10),
+        file(`sprite-fright-shot-${String(i + 1).padStart(3, "0")}-openexr-frames.tar`, (4.1 + (i % 4) * 0.3) * GiB, 60 * 30 + i * 10),
       ),
-      file("Andor.S02.nfo", 4.4 * KiB, 60 * 30),
+      file("sprite-fright-credits-CC-BY.txt", 4.4 * KiB, 60 * 30),
     ],
-    "/home/seedling/downloads/Severance.S02.1080p.ATVP.WEB-DL.DDP5.1.Atmos.H.264-FLUX": REMOTE_SEASON(10, 60 * 55),
-    "/home/seedling/downloads/The.Bear.S03.1080p.WEB-DL.DDP5.1.H.264-NTb": REMOTE_SEASON(10, 60 * 24 * 2),
+    "/home/seedling/downloads/datasets": REMOTE_PARTS("common-voice-en-delta-21.0", "tar", 10, 60 * 55),
+    "/home/seedling/downloads/vm-images": VM_IMAGES(10, 60 * 24 * 2),
     "/home/seedling/downloads/music": [
-      dir("Khruangbin - A LA SALA (2024) [FLAC]", 60 * 24 * 14),
-      dir("Boards of Canada - Music Has the Right to Children (1998) [FLAC]", 60 * 24 * 20),
+      dir("Nine Inch Nails - Ghosts I-IV (2008) [CC BY-NC-SA FLAC]", 60 * 24 * 14),
+      dir("Chad Crouch - Arps (2019) [CC BY-NC FLAC]", 60 * 24 * 20),
     ],
     "/home/seedling/files": [dir("backups", 60 * 24)],
     "/home/seedling/watch": [],
@@ -171,21 +176,21 @@ export const LOCAL: Record<string, FsEntry[]> = {
   "D:\\": [dir("Media", 60 * 5), dir("Backups", 60 * 24 * 7), dir("Games", 60 * 24 * 30)],
   "D:\\Media": [dir("Incoming", 60 * 5), dir("Movies", 60 * 24 * 2), dir("TV", 60 * 24 * 2), dir("Music", 60 * 24 * 14)],
   "D:\\Media\\Incoming": [
-    dir("Severance.S02.1080p.ATVP.WEB-DL.DDP5.1.Atmos.H.264-FLUX", 60 * 40),
+    dir("datasets", 60 * 40),
     dir("linux-isos", 60 * 24),
-    file("Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.HDR.DV.TrueHD.7.1-FraMeSToR.mkv.part", 14.3 * GiB, 0),
+    file("sprite-fright-2021-uhd-4096x1716-prores4444-master.mov.part", 14.3 * GiB, 0),
     file("debian-13.0.0-amd64-DVD-1.iso", 3.9 * GiB, 38),
-    file("Past.Lives.2023.1080p.WEB.H264-CUPCAKES.mkv", 5.9 * GiB, 60 * 24 * 3),
-    file("Big.Buck.Bunny.2008.1080p.BluRay.x264-SAMPLE.mkv", 691 * MiB, 60 * 24 * 11),
+    file("tears-of-steel-2012-1080p-prores-master.mov", 5.9 * GiB, 60 * 24 * 3),
+    file("big-buck-bunny-2008-1080p-h264.mp4", 691 * MiB, 60 * 24 * 11),
     file("SHA256SUMS", 1.1 * KiB, 38),
   ],
   "D:\\Media\\Incoming\\linux-isos": [
     file("archlinux-2026.08.01-x86_64.iso", 1.2 * GiB, 60 * 24 * 4),
     file("nixos-minimal-25.05-x86_64-linux.iso", 1.1 * GiB, 60 * 24 * 8),
   ],
-  "D:\\Media\\Incoming\\Severance.S02.1080p.ATVP.WEB-DL.DDP5.1.Atmos.H.264-FLUX": REMOTE_SEASON(10, 60 * 40),
-  "D:\\Media\\Movies": [dir("Oppenheimer (2023)", 60 * 24 * 2), dir("Past Lives (2023)", 60 * 24 * 3)],
-  "D:\\Media\\TV": [dir("Andor", 60 * 24 * 2), dir("Severance", 60 * 24 * 2)],
+  "D:\\Media\\Incoming\\datasets": REMOTE_PARTS("common-voice-en-delta-21.0", "tar", 10, 60 * 40),
+  "D:\\Media\\Movies": [dir("Blender Open Movies", 60 * 24 * 2), dir("Public Domain", 60 * 24 * 3)],
+  "D:\\Media\\TV": [dir("Documentaries", 60 * 24 * 2), dir("Conference Talks", 60 * 24 * 2)],
   "D:\\Media\\Music": [],
   "D:\\Backups": [file("warpseed-2026-08-17.db", 2.1 * MiB, 60 * 24 * 7)],
   "D:\\Games": [],
@@ -240,8 +245,8 @@ export const TRANSFERS: Transfer[] = [
     siteId: 1,
     engine: "sftpfast",
     direction: "download",
-    src: "/home/seedling/downloads/Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.HDR.DV.TrueHD.7.1-FraMeSToR.mkv",
-    dst: "D:\\Media\\Incoming\\Dune.Part.Two.2024.2160p.UHD.BluRay.REMUX.HDR.DV.TrueHD.7.1-FraMeSToR.mkv",
+    src: "/home/seedling/downloads/sprite-fright-2021-uhd-4096x1716-prores4444-master.mov",
+    dst: "D:\\Media\\Incoming\\sprite-fright-2021-uhd-4096x1716-prores4444-master.mov",
     size: Math.round(24.6 * GiB),
     state: "active",
     priority: 0,
@@ -274,8 +279,8 @@ export const TRANSFERS: Transfer[] = [
     siteId: 1,
     engine: "sftpfast",
     direction: "download",
-    src: "/home/seedling/downloads/The.Bear.S03.1080p.WEB-DL.DDP5.1.H.264-NTb/Episode.S01E04.mkv",
-    dst: "D:\\Media\\Incoming\\The.Bear.S03.1080p.WEB-DL.DDP5.1.H.264-NTb\\Episode.S01E04.mkv",
+    src: "/home/seedling/downloads/vm-images/debian-13-cloud-amd64-20260804.qcow2",
+    dst: "D:\\Media\\Incoming\\vm-images\\debian-13-cloud-amd64-20260804.qcow2",
     size: Math.round(2.9 * GiB),
     state: "paused",
     priority: 0,
@@ -342,8 +347,8 @@ export const TRANSFERS: Transfer[] = [
     siteId: 1,
     engine: "sftpfast",
     direction: "download",
-    src: "/home/seedling/downloads/Interstellar.2014.IMAX.2160p.UHD.BluRay.x265-TERMiNAL.mkv",
-    dst: "D:\\Media\\Incoming\\Interstellar.2014.IMAX.2160p.UHD.BluRay.x265-TERMiNAL.mkv",
+    src: "/home/seedling/downloads/wikipedia-en-20260801-pages-articles-multistream.xml.bz2",
+    dst: "D:\\Media\\Incoming\\wikipedia-en-20260801-pages-articles-multistream.xml.bz2",
     size: Math.round(31.4 * GiB),
     state: "failed",
     priority: 0,
