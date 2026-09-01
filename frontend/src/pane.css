@@ -4,8 +4,11 @@
    Layout/behavior (keyboard, focus, virtualization) is untouched. */
 
 .pane {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  /* Flex, not a four-track grid: the filter strip is conditional, so with it
+     closed the tracks shifted up and the 1fr landed on the status bar — the
+     listing collapsed to its content height and the footer ate the rest. */
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   background: var(--surface-card);
   border: 1px solid var(--border);
@@ -15,6 +18,12 @@
   position: relative;
   transition: border-color var(--dur-fast) var(--ease-out),
     box-shadow var(--dur-fast) var(--ease-out);
+}
+/* The listing takes the leftover height; toolbar, filter strip and status
+   bar size to their content. */
+.pane__body {
+  flex: 1;
+  min-height: 0;
 }
 /* active pane: accent-tinted border + a subtle glow ring (ux-spec §8.3) */
 .pane--active {
@@ -180,6 +189,11 @@
 /* listing */
 .pane__scroll {
   overflow-y: auto;
+  /* flex + min-height:0 so the scroller fills the list rather than stopping
+     at the last row: the space below the rows is where the empty-area click
+     and right-click land, and it has to be inside THIS element to reach
+     their handlers. */
+  flex: 1;
   min-height: 0;
   outline: none;
   position: relative;
@@ -197,18 +211,39 @@
   flex: 1;
 }
 
-/* column headers: uppercase 10.5px, letterspaced, dim */
-.row--head {
+/* column headers: uppercase 10.5px, letterspaced, dim.
+   Doubled class deliberately: .row is declared further down this file and
+   would otherwise win every shared property on equal specificity — which
+   left the header absolutely positioned, out of flow and painted UNDER the
+   first row, so no heading could be seen or clicked at all. */
+.row.row--head {
   position: static;
   height: 26px;
   background: var(--surface-card);
   border-bottom: 1px solid var(--border);
   border-radius: 0;
   padding: 0 6px;
-  color: var(--text-faint);
+  /* --text-faint was ~2.3:1 on the card in Clay: a label nobody can read is
+     a control nobody tries. */
+  color: var(--text-dim);
 }
-.row--head:hover {
+/* The strip as a whole stays calm; the individual headings light up. */
+.row.row--head:hover {
   background: var(--surface-card);
+}
+/* The grip lives here rather than inside the button, AND the cell reserves
+   its inner half as padding — a sibling that still overlaps the button is
+   just as fatal, because it wins the hit test and the sort never fires. */
+.phead-cell {
+  --grip-in: 6px; /* the half of the 11px grip that falls inside the cell */
+  position: relative;
+  display: flex;
+  align-self: stretch; /* so the button's hover target fills the 26px strip */
+  min-width: 0;
+}
+/* Only Size and Modified carry a grip; the name column keeps its full width. */
+.row--head .phead-cell:not(:first-child) {
+  padding-right: var(--grip-in);
 }
 .phead {
   position: relative;
@@ -226,21 +261,33 @@
   text-transform: uppercase;
   letter-spacing: 0.09em;
   cursor: pointer;
+  width: 100%;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
+  user-select: none;
 }
 /* name column: text lines up with row names past the file-type icon */
-.row--head .phead:first-child {
+.row--head .phead-cell:first-child .phead {
   padding-left: 32px;
 }
 .phead:hover {
-  color: var(--text-mid);
+  color: var(--text);
+  background: var(--surface-3);
+  border-radius: var(--radius-sm, 4px);
+}
+.phead:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent-dim);
+  border-radius: var(--radius-sm, 4px);
 }
 .phead--on {
   color: var(--accent);
 }
 .phead--num {
   justify-content: flex-end;
+  /* The cell handed --grip-in to the grip, so take it back off the label's
+     own padding: the heading has to stay flush with the numbers below it. */
+  padding-right: calc(var(--sp-2) - var(--grip-in));
 }
 .phead__dir {
   flex: none;
@@ -251,21 +298,38 @@
 .phead__dir--asc {
   transform: rotate(-90deg);
 }
+/* Unsorted columns keep the arrow's space and hint it on hover, so the sort
+   gesture advertises itself instead of hiding on the active column. */
+.phead__dir--idle {
+  opacity: 0;
+  transform: rotate(-90deg);
+  transition: opacity var(--dur-instant);
+}
+.phead-cell:hover .phead__dir--idle {
+  opacity: 0.5;
+}
+/* 11px — Explorer's target size, straddling the boundary: --grip-in of it
+   over the cell's reserved padding, the rest over the 8px column gap. It
+   therefore starts exactly where the button ends and stops 3px short of the
+   next one, so no click on either heading can land on the grip. */
 .phead__grip {
   position: absolute;
   top: 0;
   bottom: 0;
-  right: calc(var(--sp-2) / -2);
-  width: 8px;
+  right: calc(var(--grip-in) - 11px);
+  width: 11px;
   cursor: col-resize;
+  z-index: 1;
 }
 .phead__grip::after {
   content: "";
   position: absolute;
-  inset: 3px auto 3px 3px;
+  inset: 3px auto 3px 5px;
   width: 1px;
   background: var(--border-strong);
-  opacity: 0;
+  /* Visible at rest: the boundaries are what teach the header is a
+     structured, draggable strip. */
+  opacity: 0.3;
   transition: opacity var(--dur-instant);
 }
 .phead__grip:hover::after {
@@ -387,14 +451,21 @@
     opacity: 0.55;
   }
 }
+/* Sits below the column header inside .pane__list, so it takes the leftover
+   height rather than the full one. */
 .pane__empty {
   display: grid;
   place-content: center;
   gap: var(--sp-2);
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  outline: none;
   text-align: center;
   color: var(--text-faint);
   font-size: var(--text-sm);
+}
+.pane__empty:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent-dim), inset 0 0 0 3px var(--accent-glow);
 }
 .pane__error {
   margin: var(--sp-3);
@@ -438,4 +509,14 @@
 .pane__status .marked {
   color: var(--accent);
   font-weight: 600;
+}
+/* The live type-ahead buffer: makes the cursor jump explicable rather than
+   mysterious. white-space:pre keeps a typed space visible. */
+.pane__typeahead {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  color: var(--text-dim);
+  font-family: var(--font-data);
+  white-space: pre;
 }

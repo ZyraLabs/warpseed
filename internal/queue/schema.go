@@ -114,4 +114,14 @@ var migrations = []string{
 	UPDATE settings SET value='flightdeck' WHERE key='ui.theme' AND value='dark';
 	UPDATE settings SET value='drafting'   WHERE key='ui.theme' AND value='light';
 	`,
+
+	// 007 — multi-connection chunked uploads. Separate lane settings from
+	// downloads: the uplink is ~12 MiB/s against a ~5 MiB/s per-connection
+	// cap, so ~3 lanes saturate it and more is pure connection overhead,
+	// while the downlink (~110 MiB/s against the same cap) wants many more.
+	`
+	INSERT OR IGNORE INTO settings(key,value) VALUES
+		('transfers.upload_chunk_min_mb','128'),
+		('transfers.upload_chunk_streams','3');
+	`,
 }

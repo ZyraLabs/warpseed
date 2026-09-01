@@ -43,9 +43,14 @@ export default function Breadcrumb({ path, onNavigate, onSubmitPath, editReq }: 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(path);
   const inputRef = useRef<HTMLInputElement>(null);
+  const servedReq = useRef(0);
 
   useEffect(() => {
-    if (editReq > 0) {
+    // editReq only ever counts up and is never reset, so react to a CHANGE in
+    // it and never to a change in `path` — otherwise every navigation after
+    // the first Ctrl+L re-opens the editor and steals focus from the list.
+    if (editReq > 0 && editReq !== servedReq.current) {
+      servedReq.current = editReq;
       setDraft(path);
       setEditing(true);
     }

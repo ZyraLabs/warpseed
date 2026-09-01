@@ -38,7 +38,13 @@ const (
 	// this exists — one big file otherwise runs at one connection's rate.
 	defaultChunkMinMB  = 256
 	defaultChunkStream = 4
-	maxChunkStreams    = 16
+	// Uploads use their own pair: a ~12 MiB/s uplink is already saturated by
+	// three lanes against the same per-connection cap, so a fourth buys no
+	// throughput and costs a handshake, a MaxStartups slot and a global slot
+	// a concurrent download could have used.
+	defaultUploadChunkMinMB  = 128
+	defaultUploadChunkStream = 3
+	maxChunkStreams          = 16
 	// progress cadence: events ≤4Hz per transfer, DB checkpoint every 3s
 	eventEvery = 250 * time.Millisecond
 	dbEvery    = 3 * time.Second
@@ -238,17 +244,23 @@ func (d *Dispatcher) pump(ctx context.Context) {
 	}
 }
 
-// streamsFor decides how many connections a transfer gets: >1 only for
-// downloads of files past the chunking threshold.
+// streamsFor decides how many connections a transfer gets: >1 for files past
+// the chunking threshold, which each direction sets separately.
 func (d *Dispatcher) streamsFor(t queue.Transfer, siteCap int) int {
-	if t.Direction == "upload" || t.Engine != "sftpfast" {
+	if t.Engine != "sftpfast" {
 		return 1
 	}
-	minMB := d.store.SettingInt("transfers.chunk_min_mb", defaultChunkMinMB)
+	minKey, streamKey := "transfers.chunk_min_mb", "transfers.chunk_streams"
+	defMin, defStream := defaultChunkMinMB, defaultChunkStream
+	if t.Direction == "upload" {
+		minKey, streamKey = "transfers.upload_chunk_min_mb", "transfers.upload_chunk_streams"
+		defMin, defStream = defaultUploadChunkMinMB, defaultUploadChunkStream
+	}
+	minMB := d.store.SettingInt(minKey, defMin)
 	if minMB <= 0 || t.Size < int64(minMB)<<20 {
 		return 1
 	}
-	streams := d.store.SettingInt("transfers.chunk_streams", defaultChunkStream)
+	streams := d.store.SettingInt(streamKey, defStream)
 	if streams < 2 {
 		return 1
 	}
@@ -281,11 +293,37 @@ func parentDir(dst string, remote bool) string {
 	return filepath.Dir(dst)
 }
 
-// removePart deletes a leftover partial file, ignoring absence.
+// removePart deletes a leftover local partial file, ignoring absence.
 func removePart(path string) {
 	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		log.Printf("dispatch: remove %s: %v", path, err)
 	}
+}
+
+// removeTransferPart deletes a leftover partial file on whichever side the
+// destination lives, ignoring absence. An upload's Dst is a remote path, so
+// os.Remove would be a no-op at best and a wrong deletion at worst.
+func (d *Dispatcher) removeTransferPart(t queue.Transfer, c *sftpfast.Client, suffix string) {
+	p := t.Dst + suffix
+	if t.Direction == "upload" {
+		if c == nil {
+			return
+		}
+		if err := c.RemoveRemote(p); err != nil {
+			log.Printf("dispatch: remove remote %s: %v", p, err)
+		}
+		return
+	}
+	removePart(p)
+}
+
+// first is the client to run one-off remote housekeeping on; nil when the
+// server granted us nothing.
+func first(cs []*sftpfast.Client) *sftpfast.Client {
+	if len(cs) == 0 {
+		return nil
+	}
+	return cs[0]
 }
 
 // resize adjusts a running transfer's slot reservation, returning capacity
@@ -425,11 +463,30 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 	// runs must clear the other's leftovers — adopting the wrong one would
 	// publish a file full of holes.
 	if chunked {
-		removePart(t.Dst + sftpfast.PartSuffix)
+		d.removeTransferPart(t, first(clients), sftpfast.PartSuffix)
 	} else {
-		removePart(t.Dst + sftpfast.ChunkPartSuffix)
+		d.removeTransferPart(t, first(clients), sftpfast.ChunkPartSuffix)
 		if derr := d.store.DeleteChunks(t.ID); derr != nil {
 			log.Printf("dispatch: clear chunk plan %d: %v", t.ID, derr)
+		}
+	}
+
+	// The engine reports the offset it actually resumed from, so bytes_done
+	// reflects reality even when the DB seed and the .wspart disagree.
+	onStart := func(offset int64) {
+		progMu.Lock()
+		done = offset
+		progMu.Unlock()
+	}
+	onChunkProgress := func(idx int, delta int64) {
+		progMu.Lock()
+		chunkDone[idx] += delta
+		progMu.Unlock()
+		progress(delta)
+	}
+	onChunkCheckpoint := func(idx int, cdone int64) {
+		if cerr := d.store.UpdateChunkProgress(t.ID, idx, cdone, "checkpoint"); cerr != nil {
+			log.Printf("dispatch: chunk %d/%d checkpoint: %v", t.ID, idx, cerr)
 		}
 	}
 
@@ -443,22 +500,30 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 			resumed += r.Done
 		}
 		done = resumed
-		err = sftpfast.DownloadChunks(ctx, clients, t.Src, t.Dst, t.Size, ranges,
-			func(idx int, delta int64) {
-				progMu.Lock()
-				chunkDone[idx] += delta
-				progMu.Unlock()
-				progress(delta)
-			},
-			func(idx int, cdone int64) {
-				if cerr := d.store.UpdateChunkProgress(t.ID, idx, cdone, "checkpoint"); cerr != nil {
-					log.Printf("dispatch: chunk %d/%d checkpoint: %v", t.ID, idx, cerr)
-				}
-			})
+		if t.Direction == "upload" {
+			err = sftpfast.UploadChunks(ctx, clients, t.Src, t.Dst, t.Size, ranges, onChunkProgress, onChunkCheckpoint)
+		} else {
+			err = sftpfast.DownloadChunks(ctx, clients, t.Src, t.Dst, t.Size, ranges, onChunkProgress, onChunkCheckpoint)
+		}
 		if err == nil {
 			if cerr := d.store.DeleteChunks(t.ID); cerr != nil {
 				log.Printf("dispatch: clear chunks %d: %v", t.ID, cerr)
 			}
+		} else if errors.Is(err, sftpfast.ErrChunkPreallocUnsupported) {
+			// The server will not size the part file up front, so the chunked
+			// resume guard cannot be made sound. Drop the plan and finish this
+			// attempt on the single-stream path rather than burning a retry:
+			// core.Classify buckets this sentinel as ClassPermanent.
+			if cerr := d.store.DeleteChunks(t.ID); cerr != nil {
+				log.Printf("dispatch: clear chunk plan %d: %v", t.ID, cerr)
+			}
+			d.removeTransferPart(t, first(clients), sftpfast.ChunkPartSuffix)
+			// Clearing chunkLen too: a stale map would keep painting a
+			// segmented bar for a transfer that is now one stream.
+			progMu.Lock()
+			done, chunkLen, chunkDone = 0, nil, nil
+			progMu.Unlock()
+			err = clients[0].Upload(ctx, t.Src, t.Dst, onStart, progress)
 		} else if errors.Is(err, sftpfast.ErrChunkStateLost) {
 			// The partial file backing those offsets is gone or altered.
 			// Drop the checkpoints and requeue for a clean run rather than
@@ -466,26 +531,30 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 			if cerr := d.store.DeleteChunks(t.ID); cerr != nil {
 				log.Printf("dispatch: reset lost chunks %d: %v", t.ID, cerr)
 			}
-			removePart(t.Dst + sftpfast.ChunkPartSuffix)
+			d.removeTransferPart(t, first(clients), sftpfast.ChunkPartSuffix)
 			if uerr := d.store.UpdateTransferProgress(t.ID, 0); uerr != nil {
 				log.Printf("dispatch: reset progress %d: %v", t.ID, uerr)
 			}
-			err = fmt.Errorf("partial file no longer matches its checkpoints — restarting: %w", err)
+			if ctx.Err() == nil && t.Attempt+1 < maxAttempts {
+				// State is now a genuinely clean slate, so requeue for an
+				// immediate fresh run. finishWithError cannot: Classify
+				// buckets this message as ClassPermanent and would fail the
+				// row outright, contradicting the restart promised above.
+				msg := "partial file no longer matched its checkpoints — restarting from zero"
+				next := time.Now().UTC().Format(time.RFC3339)
+				if serr := d.store.ScheduleRetry(t.ID, next, &msg); serr != nil {
+					log.Printf("dispatch: restart %d: %v", t.ID, serr)
+				}
+				d.emitState(t.ID, "pending", msg)
+				d.sink.Emit("transfer:progress", map[string]any{"id": t.ID, "bytes": int64(0), "size": t.Size})
+				return // deferred release/Wake still run
+			}
+			err = fmt.Errorf("partial file no longer matches its checkpoints: %w", err)
 		}
+	} else if t.Direction == "upload" {
+		err = clients[0].Upload(ctx, t.Src, t.Dst, onStart, progress)
 	} else {
-		// The engine reports the offset it actually resumed from, so
-		// bytes_done reflects reality even when the DB seed and the
-		// .wspart disagree.
-		onStart := func(offset int64) {
-			progMu.Lock()
-			done = offset
-			progMu.Unlock()
-		}
-		if t.Direction == "upload" {
-			err = clients[0].Upload(ctx, t.Src, t.Dst, onStart, progress)
-		} else {
-			err = clients[0].Download(ctx, t.Src, t.Dst, onStart, progress)
-		}
+		err = clients[0].Download(ctx, t.Src, t.Dst, onStart, progress)
 	}
 
 	progMu.Lock()
@@ -512,25 +581,36 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 	d.finishWithError(ctx, t, err)
 }
 
-// chunkPlan builds (or resumes) the byte-range plan for a chunked download.
+// chunkPlan builds (or resumes) the byte-range plan for a chunked transfer.
 // Returns ok=false whenever the single-connection path should be used.
 func (d *Dispatcher) chunkPlan(t queue.Transfer, clients []*sftpfast.Client, streams int) ([]sftpfast.ChunkRange, bool) {
-	if streams < 2 || len(clients) < 2 || t.Direction == "upload" || t.Size <= 0 {
+	if streams < 2 || len(clients) < 2 || t.Size <= 0 {
 		return nil, false
 	}
 	// The plan is only valid against the exact file it was built for: both
 	// size and mtime must still match, or a resumed range would splice new
-	// content into old offsets.
-	size, mtime, err := clients[0].StatRemote(t.Src)
-	if err != nil {
-		return nil, false
+	// content into old offsets. The source is local for an upload and remote
+	// for a download; everything downstream is the same either way.
+	var size, mtime int64
+	if t.Direction == "upload" {
+		st, serr := os.Stat(t.Src)
+		if serr != nil || st.IsDir() {
+			return nil, false
+		}
+		size, mtime = st.Size(), st.ModTime().Unix()
+	} else {
+		var serr error
+		size, mtime, serr = clients[0].StatRemote(t.Src)
+		if serr != nil {
+			return nil, false
+		}
 	}
 	changed := size != t.Size || (t.SrcMtime != 0 && mtime != t.SrcMtime)
 	if changed {
 		if derr := d.store.DeleteChunks(t.ID); derr != nil {
 			log.Printf("dispatch: reset chunks %d: %v", t.ID, derr)
 		}
-		removePart(t.Dst + sftpfast.ChunkPartSuffix)
+		d.removeTransferPart(t, first(clients), sftpfast.ChunkPartSuffix)
 		if size != t.Size {
 			return nil, false // size drift also invalidates the queued row
 		}
@@ -557,9 +637,18 @@ func (d *Dispatcher) chunkPlan(t queue.Transfer, clients []*sftpfast.Client, str
 
 	ranges := make([]sftpfast.ChunkRange, 0, len(saved))
 	var covered int64
-	for _, c := range saved {
+	for i, c := range saved {
 		if c.BytesDone < 0 || c.BytesDone > c.Length {
 			return nil, false // corrupt checkpoint: fall back to a clean run
+		}
+		// The engines' completeness gate is pure byte accounting, so an
+		// overlapping set summing to size would pass it and publish a file
+		// with a hole. Contiguity is checked here, once, for both directions.
+		if i == 0 && c.Offset != 0 {
+			return nil, false
+		}
+		if i > 0 && c.Offset != saved[i-1].Offset+saved[i-1].Length {
+			return nil, false
 		}
 		covered += c.Length
 		ranges = append(ranges, sftpfast.ChunkRange{

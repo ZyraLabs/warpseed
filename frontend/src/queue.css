@@ -268,12 +268,34 @@
 .thead__sort--on {
   color: var(--text);
 }
+/* The button hugs its label, so the hover target comes from a spread shadow
+   rather than padding that would knock the headings out of line with the
+   data columns below. */
+.thead__sort:hover {
+  background: var(--surface-3);
+  border-radius: var(--radius-sm, 4px);
+  box-shadow: 0 0 0 3px var(--surface-3);
+}
+.thead__sort:focus-visible {
+  box-shadow: inset 0 0 0 1px var(--accent-dim);
+  border-radius: var(--radius-sm, 4px);
+}
 .thead__dir {
   flex: none;
   transition: transform var(--dur-fast) var(--ease-out);
 }
 .thead__dir--desc {
   transform: rotate(180deg);
+}
+/* Unsorted columns keep the arrow's space and hint it on hover, so the sort
+   gesture advertises itself instead of hiding on the active column. */
+.thead__dir--idle {
+  opacity: 0;
+  transition: opacity var(--dur-instant);
+}
+.thead:hover .thead__dir--idle,
+.thead__sort:hover .thead__dir--idle {
+  opacity: 0.5;
 }
 button.trow__icon {
   border: none;

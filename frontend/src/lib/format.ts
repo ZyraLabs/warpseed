@@ -11,9 +11,15 @@ export function formatSize(size: number): string {
   return `${v.toFixed(v >= 100 ? 0 : 1)} ${units[u]}`;
 }
 
-/** "2026-08-01T12:00:00Z" → "2026-08-01 12:00" */
+/** "2026-08-01T12:00:00Z" (both backends emit UTC) → local "2026-08-01 13:00",
+    so the column agrees with what Explorer shows. Sorting is unaffected: the
+    pane sorts the raw fixed-width UTC string, not this. Unparseable values fall
+    back to string surgery rather than rendering "Invalid Date". */
 export function formatTime(rfc3339: string): string {
-  return rfc3339.replace("T", " ").replace(/:\d\dZ?$/, "");
+  const d = new Date(rfc3339);
+  if (Number.isNaN(d.getTime())) return rfc3339.replace("T", " ").replace(/:\d\dZ?$/, "");
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
 /** Translate the engine's raw error strings into plain language where the

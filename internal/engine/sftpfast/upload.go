@@ -41,6 +41,9 @@ func (c *Client) Upload(ctx context.Context, localPath, remotePath string, onSta
 		}
 	}
 
+	// PartSuffix, never ChunkPartSuffix: a chunked part is preallocated to the
+	// full size and sparse, so this path would read its size as "already
+	// finished" and publish a file of holes.
 	part := remotePath + PartSuffix
 	// Resume only from a part we plausibly wrote: it must be no larger than
 	// the source and no older than the source's last modification. Anything

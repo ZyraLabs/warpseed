@@ -1000,16 +1000,21 @@ var settingValidators = map[string]func(string) error{
 	"ui.local_default": anyString, // the folder local panes open in
 	// UI layout state lives here rather than in browser storage, so one
 	// backup of the database captures everything except credentials.
-	"ui.queue_columns":        jsonBlob,
-	"ui.queue_sort":           jsonBlob,
-	"ui.pane_columns":         jsonBlob,
-	"ui.pane_sort":            jsonBlob,
-	"ui.recents":              jsonBlob,
+	"ui.queue_columns": jsonBlob,
+	"ui.queue_sort":    jsonBlob,
+	"ui.pane_columns":  jsonBlob,
+	"ui.pane_sort":     jsonBlob,
+	"ui.recents":       jsonBlob,
 	// One-time flags ("1" once shown) — e.g. the post-first-transfer
 	// support-the-project toast must never repeat.
-	"ui.donate_nudged": oneOf("", "1"),
+	"ui.donate_nudged":        oneOf("", "1"),
 	"transfers.chunk_min_mb":  intRange(0, 1<<20), // 0 disables chunking
 	"transfers.chunk_streams": intRange(1, 16),
+	// Uploads get their own pair: the uplink saturates at far fewer lanes
+	// than the downlink, so one shared value would be wrong in both
+	// directions.
+	"transfers.upload_chunk_min_mb":  intRange(0, 1<<20), // 0 disables upload chunking
+	"transfers.upload_chunk_streams": intRange(1, 16),
 }
 
 func intRange(lo, hi int) func(string) error {

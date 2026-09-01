@@ -275,6 +275,8 @@ export default function QueueDock() {
           <div className="trow trow--head">
             <button
               className={`trow__icon thead__sort ${sort.key === "state" ? "thead__sort--on" : ""}`}
+              role="columnheader"
+              aria-sort={sort.key === "state" ? (sort.desc ? "descending" : "ascending") : "none"}
               onClick={() => toggleSort("state")}
               title="Sort by status (failed first)"
             >
@@ -286,20 +288,26 @@ export default function QueueDock() {
             </button>
             {QUEUE_COLUMNS.map((c) => {
               const key = COL_SORT[c.id];
+              const on = sort.key === key;
               return (
-                <span key={c.id} className={`thead thead--${c.id}`}>
+                <span
+                  key={c.id}
+                  className={`thead thead--${c.id}`}
+                  role="columnheader"
+                  aria-sort={on ? (sort.desc ? "descending" : "ascending") : "none"}
+                >
                   <button
-                    className={`thead__sort ${sort.key === key ? "thead__sort--on" : ""}`}
+                    className={`thead__sort ${on ? "thead__sort--on" : ""}`}
                     onClick={() => toggleSort(key)}
                     title={`Sort by ${c.label.toLowerCase()} — click again to reverse, again for queue order`}
                   >
                     {c.label}
-                    {sort.key === key && (
-                      <ArrowUp
-                        size={9}
-                        className={`thead__dir ${sort.desc ? "thead__dir--desc" : ""}`}
-                      />
-                    )}
+                    {/* The arrow is always rendered so the label never shifts when
+                        the sorted column changes; idle ones stay invisible. */}
+                    <ArrowUp
+                      size={9}
+                      className={`thead__dir ${on ? (sort.desc ? "thead__dir--desc" : "") : "thead__dir--idle"}`}
+                    />
                   </button>
                   <span
                     className="thead__grip"

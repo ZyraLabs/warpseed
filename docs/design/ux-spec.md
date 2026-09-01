@@ -84,7 +84,7 @@ Rule of reconciliation: **WinSCP/Norton-commander keys are never repurposed** �
 | `Num *` | Invert marks | NC/WinSCP |
 | `Ctrl+A` | Select all | universal |
 | `Ctrl+Shift+A` | Deselect all | replaces WinSCP Shift+Ctrl+L |
-| `Shift+↑/↓/PgUp/PgDn/Home/End` | Range select from anchor | universal |
+| `Shift+↑/↓/PgUp/PgDn/Home/End` | Range select from anchor — *shipped* | universal |
 | `Ctrl+C` / `Ctrl+X` / `Ctrl+V` | Copy/cut/paste across panes (enqueues transfers; cut shows §7.1 cut state) | Explorer idiom |
 | `Ctrl+T` | New session tab | WinSCP |
 | `Ctrl+W` | Close tab | modern (WinSCP compat alias Ctrl+Shift+D kept) |
@@ -92,7 +92,7 @@ Rule of reconciliation: **WinSCP/Norton-commander keys are never repurposed** �
 | `Alt+1…9` | Jump to tab N | WinSCP |
 | `Ctrl+Alt+B` | Toggle synchronized browsing | WinSCP |
 | `Ctrl+S` | Open sync/compare view (Phase 3) | WinSCP "synchronize" |
-| `Ctrl+F3…F6` | Sort by name / ext / mtime / size (repeat = reverse) | WinSCP |
+| `Ctrl+F3` / `Ctrl+F5` / `Ctrl+F6` | Sort by name / mtime / size (repeat = reverse) — *shipped*. `Ctrl+F4` (ext) is unimplemented: warpseed has no ext sort key pending a Type column | WinSCP |
 | `Ctrl+Alt+H` | Toggle hidden/dot files | WinSCP |
 | `Ctrl+Shift+S` | Site manager | CuteFTP F4 lineage, modern chord |
 | `Ctrl+Q` | Focus queue dock (then ↑↓ select row, Space pause/resume, Del cancel, Ctrl+↑/↓ reorder) | new |
@@ -101,6 +101,13 @@ Rule of reconciliation: **WinSCP/Norton-commander keys are never repurposed** �
 | `F1` | Keyboard map overlay (searchable cheat sheet) | universal |
 
 Focus rules: exactly one pane owns focus; queue dock and palette are focus scopes entered explicitly (Ctrl+Q / Ctrl+K) and exited with Esc back to the last active pane. Focus is never stolen by background events — a completed transfer toasts, it does not focus-jump.
+
+**Deliberate divergences.** Where Explorer and WinSCP disagree, these four calls are made on purpose. They are not bugs; do not "fix" them back.
+
+1. **`Backspace` = up a level** (WinSCP's documented contract), not Explorer's Backspace = Back. `Alt+↑` also goes up and `Alt+←` goes Back, so both audiences are served. Going up lands the cursor on the folder you just left.
+2. **`F5` = transfer** (NC/WinSCP), not Explorer's F5 = refresh. Refresh is `Ctrl+R`. Both are `preventDefault`ed so the webview can never reload itself, and the F5-transfers handler explicitly excludes Ctrl so `Ctrl+F5` sorts without also queueing a transfer.
+3. **Folders always lead, in both sort directions** (Explorer's actual behaviour). Neither backend computes directory sizes, so under a size sort folders order by name among themselves — reversed when the sort is descending, so that clicking SIZE on a folder-only listing (a seedbox root) visibly does something instead of producing a byte-identical list.
+4. **A plain arrow key does not collapse the mark set.** Explorer would; §3.6 keeps cursor and marks as two coexisting mechanisms, and Insert-marks must survive arrowing around. Only `Shift`+movement rewrites the marks, as a range from the anchor.
 
 ### 3.2 Path bar: breadcrumb with inline edit
 
@@ -120,7 +127,13 @@ Toggle: `Ctrl+Alt+B` or the link icon between the two path bars. When on: naviga
 
 ### 3.5 Filter-as-you-type
 
-`Ctrl+F` (or just typing a printable char when the listing is focused — configurable, default on) opens a 28px filter strip pinned under the pane toolbar. Substring match, case-insensitive; `*`/`?` globbing auto-detected. Listing filters live per keystroke (virtualized list re-derives; no debounce needed at these row counts). Footer shows "42 / 15,203 match". `Enter` moves focus to the filtered list; `Esc` clears + closes. Filter persists across a refresh but clears on navigate. This replaces both WinSCP's incremental search *and* its separate Ctrl+Alt+F filter dialog with one strip.
+`Ctrl+F` opens a 28px filter strip pinned under the pane toolbar. Substring match, case-insensitive; `*`/`?` globbing auto-detected. Listing filters live per keystroke (virtualized list re-derives; no debounce needed at these row counts). Footer shows "42 / 15,203 match". `Enter` moves focus to the filtered list; `Esc` clears + closes. Filter persists across a refresh but clears on navigate. This replaces both WinSCP's incremental search *and* its separate Ctrl+Alt+F filter dialog with one strip.
+
+**Typing a printable character does NOT open the filter.** It performs Windows Explorer's prefix type-ahead instead: the character is appended to a search buffer with a ~1s per-character timeout, the cursor jumps to the first entry whose name *starts with* the accumulated prefix, and repeating a single letter steps through successive entries beginning with it. Nothing is ever hidden, and the live buffer shows in the pane footer.
+
+This reverses the original "configurable, default on" clause above, which shipped in 1.0 and was reported as clunky: the first keystroke silently moved focus out of the listing into the filter box, rows vanished per keystroke, and `Esc` was not handled in the listing at all — so a user could be stranded in a filtered directory with no keyboard way out. The filter itself is unchanged and stays reachable on `Ctrl+F` and from the command palette; `Esc` now clears it from the listing too. A `ui.typeahead` setting to restore the old default is deferred, not refused.
+
+`Space` is the one place Explorer and WinSCP genuinely conflict here: it marks/unmarks (§3.1) when the type-ahead buffer is idle, and feeds the search buffer only while the buffer is active — i.e. within the timeout of the previous printable key. `Insert` remains the unambiguous mark key.
 
 ### 3.6 Selection model
 
@@ -331,9 +344,9 @@ Rules: only `transform`, `opacity` (and `clip-path` for the warp-line, §8.1). D
 |---|---|---|
 | Tokens v2 (palette, type, spacing, motion, Inter+Cascadia) | 6 | **0.5** |
 | Pane row full state set (hover/cursor/marked/cut) + selection model | 7.1, 3.6 | **0.5** |
-| Keyboard map core (Tab, F-keys local ops, Insert/Space marks, history, Ctrl+L) | 3.1 | **0.5** |
+| Keyboard map core (Tab, F-keys local ops, Insert/Space marks, Shift-range select, history, Ctrl+L) | 3.1 | **0.5** — *shipped* |
 | Breadcrumb-with-inline-edit path bar (local; autocomplete deferred) | 3.2 | **0.5** |
-| Filter-as-you-type strip | 3.5 | **0.5** |
+| Filter-as-you-type strip (Ctrl+F; typing jumps instead — see §3.5) | 3.5 | **0.5** — *shipped* |
 | Pane empty/loading/error states, skeleton discipline | 7.12 | **0.5** |
 | Command palette + quick-open (local commands/paths) | 7.10–7.11 | **0.5** |
 | Context menu, buttons, inputs, toasts | 7.5–7.8 | **0.5** |
@@ -345,7 +358,8 @@ Rules: only `transform`, `opacity` (and `clip-path` for the warp-line, §8.1). D
 | Remote path autocomplete; F5/F6 transfer semantics; resume-fidelity chips | 3.2, 4.3 | **1** |
 | Hyperlane chunked bar; warp-line; connection aura | 8.1–8.3 | **1** (aura/warp-line) / with chunked engine (hyperlane) |
 | Sparkline; drag-to-reorder queue; density toggle; F1 shortcut overlay | 8.4, 4.4, 6.4 | **2** |
-| Synchronized browsing; sort shortcuts; Num-pad glob marking dialog | 3.4, 3.1 | **2** |
+| Sort shortcuts (Ctrl+F3/F5/F6) | 3.1 | **2** — *shipped early*; Ctrl+F4 (ext) still open |
+| Synchronized browsing; Num-pad glob marking dialog | 3.4, 3.1 | **2** |
 | F3 preview, F4 edit-watch loop; accessibility + reduced-motion audit; S3/FTP protocol badges live | 3.1, 6.7 | **2** |
 | Sync/compare view (Ctrl+S), folder-monitor successor | 3.1 | **3** (per plan) |
 
@@ -364,7 +378,7 @@ Rules: only `transform`, `opacity` (and `clip-path` for the warp-line, §8.1). D
 | Remote path autocomplete | WinSCP | §3.2 |
 | Incremental search + filter | WinSCP (two features) | §3.5, unified strip |
 | Location profiles / bookmarks | WinSCP | Ctrl+D + quick-open (§3.3) |
-| Sort hotkeys Ctrl+F3..F6, hidden-file toggle | WinSCP | §3.1 |
+| Sort hotkeys Ctrl+F3..F6, hidden-file toggle | WinSCP | §3.1 (F3/F5/F6 shipped; F4 needs a Type column) |
 | Site manager with per-site settings | CuteFTP/WinSCP | §5 |
 | Site-independent persistent queue, tag-now-transfer-later, overnight auditability | CuteFTP | §4.4 |
 | Queue reorder + per-item control | CuteFTP | §4.2, 4.4 |

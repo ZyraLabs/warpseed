@@ -126,10 +126,21 @@ flowing. Appears once something is transferring.
 
 - **Tab** switches the active pane. The active pane carries the accent
   colour.
-- **Enter** opens a folder; **Backspace** goes up. **Ctrl+L** turns the
-  breadcrumb into an editable path.
-- **Ctrl+F** filters the listing as you type. **Esc** clears it.
-- Click column headers to sort by name, size or date.
+- **Enter** opens a folder; **Backspace** goes up — and puts the cursor
+  back on the folder you just came out of, so "up, look around, back
+  down" costs two keystrokes. **Ctrl+L** turns the breadcrumb into an
+  editable path.
+- **Typing a filename jumps to it**, the way Windows Explorer does.
+  Nothing is hidden; repeating one letter steps through the entries that
+  start with it.
+- **Ctrl+F** opens the filter strip and filters the listing as you type.
+  **Esc** clears it — from the filter box or from the listing.
+- **Click a column header** to sort by name, size or date; click it again
+  to reverse. Sorting applies to **both panes** — it is one shared
+  setting, remembered across restarts. **Ctrl+F3**, **Ctrl+F5** and
+  **Ctrl+F6** do the same from the keyboard (name, modified, size).
+- **Right-click empty space** in a listing for New folder, Refresh,
+  Select all and the three sort options.
 - **Switch a pane to This PC** or to a site from the command palette
   (Ctrl+K), or from the pane's source picker.
 
@@ -142,6 +153,8 @@ Two mechanisms coexist, commander-style:
   advances; **Space** marks without advancing; **\*** inverts;
   **Ctrl+Shift+A** clears. Ctrl+click and Shift+click work as you'd
   expect. The pane footer shows a running total of what's marked.
+- **Shift** with the arrow keys, Home, End, PageUp or PageDown extends
+  the selection from the anchor row.
 
 Transfers act on the marks if there are any, otherwise on the cursor row.
 
@@ -192,16 +205,33 @@ rather than your account. A single-connection client can never beat that
 cap on a single file.
 
 Hyperlane splits one large file across several connections — up to 16
-"lanes" — each pulling its own byte range into the same pre-allocated
+"lanes" — each moving its own byte range into the same pre-allocated
 file. Eight lanes at 5 MiB/s each is 40 MiB/s for one file. In the queue,
 a Hyperlane transfer shows a segmented progress bar, one segment per lane.
 
-Configure it under **Settings → Hyperlane**:
+Uploads use lanes too, and they have **their own settings**. An upload
+link saturates at far fewer connections than a download link — typically
+around three — so one number cannot serve both directions.
 
-- **Lanes per file** — 1–16 connections (1 = off). Start at 8; if your
-  provider limits connections per IP, stay under that limit.
+Settings has one section per direction.
+
+**Settings → Hyperlane · Downloads**
+
+- **Lanes per file** — 1–16 connections (1 = off, default 4). Start at 8;
+  if your provider limits connections per IP, stay under that limit.
 - **Engage above** — files smaller than this (default 256 MB) use a single
   connection, since lane setup costs more than it saves on small files.
+
+**Settings → Hyperlane · Uploads**
+
+- **Lanes per file** — 1–16 connections (default 3). Upload speed usually
+  caps out around three lanes; more connections cost handshakes without
+  adding throughput.
+- **Engage above** — default 128 MB.
+
+The two sections are independent. If you raised the download lane count
+on an earlier version, your uploads stay at the upload default until you
+raise that one too.
 
 Remember that lanes count against your per-site connection cap (see
 [Settings → Transfers](#settings)).
@@ -238,7 +268,8 @@ Open with **Ctrl+,** or the gear icon.
 - *Per-site default* — connection cap per site (1–8, default 3). Sites can
   override this individually.
 
-**Hyperlane** — see [above](#hyperlane--multi-connection-transfers).
+**Hyperlane · Downloads** and **Hyperlane · Uploads** — see
+[above](#hyperlane--multi-connection-transfers).
 
 **Bandwidth** — *Off*, *Fixed* (a MiB/s ceiling), or *% of max* (throttle
 to a percentage of your measured maximum, so a big run doesn't flatten
@@ -314,12 +345,15 @@ checksum, then More info → Run anyway.
 from Microsoft, then relaunch.
 
 **Transfers stall at one speed no matter what** — your provider caps each
-connection. Turn on Hyperlane (Settings → Hyperlane → Lanes per file: 8)
-and raise the per-site connection cap.
+connection. Turn on Hyperlane (Settings → Hyperlane · Downloads → Lanes
+per file: 8) and raise the per-site connection cap. Uploads have their
+own lane count in Hyperlane · Uploads — raising the download one does
+nothing for them.
 
 **"Too many connections" / logins refused** — the provider limits
-simultaneous connections per IP. Lower *Per-site default* and *Lanes per
-file* so that lanes × concurrent transfers stays under the limit.
+simultaneous connections per IP. Lower *Per-site default* and both
+*Lanes per file* values so that lanes × concurrent transfers stays under
+the limit.
 
 **Host key changed** — warpseed refuses to connect on purpose. If your
 provider migrated servers they'll have announced it; confirm with them,

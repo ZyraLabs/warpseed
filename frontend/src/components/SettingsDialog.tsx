@@ -202,10 +202,11 @@ export default function SettingsDialog() {
         </section>
 
         <section className="set-section">
-          <h3>Hyperlane</h3>
+          <h3>Hyperlane · Downloads</h3>
           <p className="set-note set-blurb">
             Splits one large file across several connections at once, so a server that
-            caps the speed of each connection no longer caps the file.
+            caps the speed of each connection no longer caps the file. Each direction
+            is tuned separately — a link is rarely as fast up as it is down.
           </p>
           <div className="set-row">
             <label>Lanes per file</label>
@@ -232,6 +233,39 @@ export default function SettingsDialog() {
               <span className="set-note">MB</span>
             </span>
           </div>
+        </section>
+
+        <section className="set-section">
+          <h3>Hyperlane · Uploads</h3>
+          <div className="set-row">
+            <label>Lanes per file</label>
+            <span className="set-inline">
+              <input
+                type="number"
+                min={1}
+                max={16}
+                value={cfg["transfers.upload_chunk_streams"] ?? "3"}
+                onChange={(e) => put("transfers.upload_chunk_streams", e.target.value)}
+              />
+              <span className="set-note">connections (1 = off)</span>
+            </span>
+          </div>
+          <div className="set-row">
+            <label>Engage above</label>
+            <span className="set-inline">
+              <input
+                type="number"
+                min={0}
+                value={cfg["transfers.upload_chunk_min_mb"] ?? "128"}
+                onChange={(e) => put("transfers.upload_chunk_min_mb", e.target.value)}
+              />
+              <span className="set-note">MB</span>
+            </span>
+          </div>
+          <p className="set-note">
+            Upload speed usually caps out around 3 lanes — more connections cost
+            handshakes without adding throughput.
+          </p>
         </section>
 
         <section className="set-section">

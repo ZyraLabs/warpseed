@@ -60,6 +60,10 @@ function toast(kind: "info" | "error" | "success", text: string) {
 /** Bound on how often a pane re-lists in response to filesystem events. */
 const FS_REFRESH_COALESCE_MS = 500;
 
+/** Type-ahead buffer lifetime. Microsoft documents "a time-out period" per
+    character without publishing the value; 1s is our approximation. */
+const TYPEAHEAD_MS = 1000;
+
 /** Row height in px — must equal --row-h in tokens.css: the virtualizer
     positions rows by this number, the CSS only paints them. */
 const ROW_H = 30;
@@ -129,11 +133,29 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const [treeOpen, setTreeOpen] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; entry: FsEntry } | null>(null);
   const [pathMenu, setPathMenu] = useState<{ x: number; y: number } | null>(null);
+  const [bgMenu, setBgMenu] = useState<{ x: number; y: number } | null>(null);
   const [bookmarks, setBookmarks] = useState<Bookmark[]>([]);
   const [prompt, setPrompt] = useState<PromptSpec | null>(null);
+  const [taHint, setTaHint] = useState("");
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const filterRef = useRef<HTMLInputElement>(null);
+  /** The scroller is unmounted when the listing is empty, so the empty-state
+      panel carries the key handler — and the focus — in its place. */
+  const emptyRef = useRef<HTMLDivElement>(null);
+  /** Range-select anchor: shift+click and shift+arrow both extend from here. */
+  const anchor = useRef(0);
+  /** Name to put the cursor on once the next listing lands — set when going
+      up, so "up, look around, back down" returns to the folder you left. */
+  const landOn = useRef<string | null>(null);
+  /** Same idea across a re-sort: `cursor` is an index into `entries`, and a
+      sort rebuilds that array in a new order. Left alone, the cursor keeps
+      the number and silently changes file — and F5/Del act on selection(). */
+  const keepOn = useRef<string | null>(null);
+  const typeahead = useRef<{ buf: string; at: number }>({ buf: "", at: 0 });
+  const taTimer = useRef<number | undefined>(undefined);
+
+  const refocusList = useCallback(() => (scrollRef.current ?? emptyRef.current)?.focus(), []);
 
   const all = nav.listing?.entries ?? [];
   const entries = useMemo(() => {
@@ -147,17 +169,8 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const viewMode = useUiStore((s) => s.viewMode);
   const miniMode = useUiStore((s) => s.miniMode);
   useEffect(() => {
-    if (viewMode === "browse" && isActive && !miniMode) scrollRef.current?.focus();
-  }, [viewMode, isActive, miniMode]);
-
-  // Reset selection state on navigation.
-  useEffect(() => {
-    setCursor(0);
-    setMarks(new Set());
-    setFilter(null);
-    setMenu(null); // a menu left open would act on the previous directory
-    scrollRef.current?.scrollTo({ top: 0 });
-  }, [nav.listing?.path]);
+    if (viewMode === "browse" && isActive && !miniMode) refocusList();
+  }, [viewMode, isActive, miniMode, refocusList]);
 
   useEffect(() => {
     if (filter !== null) filterRef.current?.focus();
@@ -177,6 +190,130 @@ export default function FilePane({ side }: { side: PaneSide }) {
     },
     [virtualizer],
   );
+
+  // Move the cursor, optionally dragging a marked range behind it. A plain
+  // arrow resets the anchor but does NOT collapse existing marks: commander
+  // behaviour (ux-spec §3.6), deliberately not Explorer's collapse.
+  const moveTo = useCallback(
+    (n: number, extend: boolean) => {
+      if (!entries.length) return;
+      const idx = Math.max(0, Math.min(n, entries.length - 1));
+      moveCursor(idx);
+      if (extend) {
+        // A filter can shrink the listing under a stale anchor.
+        const a = Math.max(0, Math.min(anchor.current, entries.length - 1));
+        const [lo, hi] = idx < a ? [idx, a] : [a, idx];
+        setMarks(new Set(entries.slice(lo, hi + 1).map((x) => x.name)));
+      } else {
+        anchor.current = idx;
+      }
+    },
+    [entries, moveCursor],
+  );
+
+  // Explorer type-ahead: typing JUMPS the cursor to the next matching name.
+  // It used to open a substring filter, which hid rows, moved focus out of
+  // the list on the first keystroke and left no keyboard way back out
+  // (ux-spec §3.5, amended in this build). Ctrl+F still opens the filter.
+  const jumpTo = useCallback(
+    (ch: string) => {
+      const now = Date.now();
+      const t = typeahead.current;
+      const buf = now - t.at > TYPEAHEAD_MS ? ch : t.buf + ch;
+      typeahead.current = { buf, at: now };
+      setTaHint(buf);
+      if (taTimer.current !== undefined) window.clearTimeout(taTimer.current);
+      taTimer.current = window.setTimeout(() => setTaHint(""), TYPEAHEAD_MS);
+      if (entries.length === 0) return;
+      // Explorer's dual mode: repeating ONE letter steps to the next entry
+      // beginning with it; typing different letters switches to prefix mode
+      // and selects the first entry matching the whole accumulated prefix.
+      const sameLetter = buf.length > 1 && /^(.)\1*$/.test(buf);
+      const probe = (sameLetter ? buf[0] : buf).toLowerCase();
+      const step = buf.length === 1 || sameLetter ? 1 : 0;
+      for (let i = 0; i < entries.length; i++) {
+        const idx = (cursor + step + i) % entries.length;
+        // Prefix, never substring: a substring hit on "r" lands somewhere
+        // unpredictable in a folder of release names.
+        if (entries[idx].name.toLowerCase().startsWith(probe)) {
+          moveCursor(idx);
+          anchor.current = idx;
+          return;
+        }
+      }
+      // No match: keep the buffer accumulating and leave the cursor alone,
+      // exactly as Explorer does. Never hide rows.
+    },
+    [entries, cursor, moveCursor],
+  );
+
+  // Remember the folder we are leaving so the navigation-reset effect can
+  // put the cursor back on it.
+  const goUp = useCallback(() => {
+    const here = nav.listing?.path ?? path;
+    const s = here.includes("\\") ? "\\" : "/";
+    const trimmed = here.length > 1 && here.endsWith(s) ? here.slice(0, -1) : here;
+    const i = trimmed.lastIndexOf(s);
+    landOn.current = i >= 0 && i < trimmed.length - 1 ? trimmed.slice(i + 1) : null;
+    // Drop the filter HERE, not in the reset effect below: that effect reads
+    // an `entries` memoized with whatever filter was still open, so landing
+    // on a name found in the filtered subset addresses a different row once
+    // the filter clears.
+    setFilter(null);
+    nav.up();
+  }, [nav, path]);
+
+  // Reset selection state on navigation, landing on the folder we just left
+  // when this was an "up". "Up, look around, back down" is the dominant
+  // browsing loop; on a high-RTT pane, re-finding the row costs real time.
+  useEffect(() => {
+    const want = landOn.current;
+    landOn.current = null;
+    setMarks(new Set());
+    setFilter(null);
+    setMenu(null); // a menu left open would act on the previous directory
+    setBgMenu(null);
+    typeahead.current = { buf: "", at: 0 };
+    setTaHint("");
+    const idx = want ? entries.findIndex((x) => x.name === want) : -1;
+    setCursor(idx >= 0 ? idx : 0);
+    anchor.current = idx >= 0 ? idx : 0;
+    if (idx >= 0) virtualizer.scrollToIndex(idx, { align: "center" });
+    else scrollRef.current?.scrollTo({ top: 0 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nav.listing?.path]);
+
+  // A header click must leave the pane usable: it takes the pane and hands
+  // focus back to the list. Without that, arrows and Space go dead until
+  // the user clicks a row again — which is how a user learns to never
+  // touch the header a second time.
+  const sortHeader = useCallback(
+    (k: SortKey) => {
+      setActivePane(side);
+      keepOn.current = entries[cursor]?.name ?? null;
+      toggleSort(k);
+      refocusList();
+    },
+    [setActivePane, side, toggleSort, refocusList, entries, cursor],
+  );
+
+  // Follow that row into the new order. `entries` is a useMemo keyed on the
+  // sort, so by the time this runs it has already been rebuilt.
+  useEffect(() => {
+    const want = keepOn.current;
+    keepOn.current = null;
+    if (want === null) return;
+    const idx = entries.findIndex((x) => x.name === want);
+    if (idx < 0) {
+      // The listing changed under the sort — keep the cursor in range.
+      setCursor((c) => Math.min(c, Math.max(0, entries.length - 1)));
+      return;
+    }
+    setCursor(idx);
+    anchor.current = idx;
+    virtualizer.scrollToIndex(idx, { align: "center" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sort]);
 
   // enqueueItems queues remote files for download into the OTHER pane's
   // local directory (commander F5 semantics).
@@ -359,15 +496,20 @@ export default function FilePane({ side }: { side: PaneSide }) {
   // one row (previously it only moved the cursor, so "click A, ctrl+click B"
   // left A unselected and acted on B alone), Ctrl adds/removes, Shift takes
   // the range from the anchor. Insert/Space keep the commander behaviour.
-  const anchor = useRef(0);
   const selectAt = useCallback(
     (index: number, ev: React.MouseEvent) => {
       const entry = entries[index];
       if (!entry) return;
       setCursor(index);
       if (ev.shiftKey) {
-        const [lo, hi] = index < anchor.current ? [index, anchor.current] : [anchor.current, index];
-        setMarks(new Set(entries.slice(lo, hi + 1).map((x) => x.name)));
+        const a = Math.max(0, Math.min(anchor.current, entries.length - 1));
+        const [lo, hi] = index < a ? [index, a] : [a, index];
+        const range = entries.slice(lo, hi + 1).map((x) => x.name);
+        // Ctrl+Shift adds the range; plain Shift replaces. Without the Ctrl
+        // branch, Ctrl+Shift+click silently discarded everything already
+        // selected — the opposite of what the modifier means.
+        if (ev.ctrlKey || ev.metaKey) setMarks((m) => new Set([...m, ...range]));
+        else setMarks(new Set(range));
         return;
       }
       anchor.current = index;
@@ -449,7 +591,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
         const st = useUiStore.getState();
         if (st.viewMode !== "browse" || st.miniMode) return; // panes hidden
       }
-      if (cmd === "up") nav.up();
+      if (cmd === "up") goUp();
       else if (cmd === "editpath") setEditReq((n) => n + 1);
       else if (cmd === "filter") setFilter((f) => (f === null ? "" : f));
       else if (cmd === "invert") invertMarks();
@@ -464,7 +606,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
     };
     window.addEventListener("ws:panecmd", handler);
     return () => window.removeEventListener("ws:panecmd", handler);
-  }, [side, nav, invertMarks, doMkdir, doRename, doDelete, selection]);
+  }, [side, nav, goUp, invertMarks, doMkdir, doRename, doDelete, selection]);
 
   // Active-pane shortcuts that must work outside the list focus.
   useEffect(() => {
@@ -476,7 +618,9 @@ export default function FilePane({ side }: { side: PaneSide }) {
       const st = useUiStore.getState();
       if (st.viewMode !== "browse" || st.miniMode) return;
       const inField =
-        e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement;
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLSelectElement ||
+        e.target instanceof HTMLTextAreaElement;
       if (e.ctrlKey && e.key.toLowerCase() === "l") {
         e.preventDefault();
         setEditReq((n) => n + 1);
@@ -491,8 +635,10 @@ export default function FilePane({ side }: { side: PaneSide }) {
         nav.forward();
       } else if (e.altKey && e.key === "ArrowUp" && !inField) {
         e.preventDefault();
-        nav.up();
-      } else if (e.key === "F5") {
+        goUp();
+      } else if (e.key === "F5" && !e.ctrlKey && !inField) {
+        // Ctrl+F5 is "sort by modified"; plain F5 inside the filter strip or
+        // the path box must not fire a transfer either.
         e.preventDefault(); // F5 transfers — never reloads the webview
         if (typeof source === "number") void enqueueItems(selection());
         else void uploadItems(selection());
@@ -516,6 +662,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
   }, [
     isActive,
     nav,
+    goUp,
     source,
     enqueueItems,
     uploadItems,
@@ -597,6 +744,34 @@ export default function FilePane({ side }: { side: PaneSide }) {
     return items;
   };
 
+  // ContextMenu has no submenus, so the active sort is marked with a check
+  // prefix in a flat list.
+  const sortItems = (): MenuItem[] => {
+    const tick = (k: SortKey) => (sort.key === k ? "✓ " : "   ");
+    return [
+      { label: `${tick("name")}Sort by name`, hint: "Ctrl+F3", run: () => sortHeader("name") },
+      { label: `${tick("size")}Sort by size`, hint: "Ctrl+F6", run: () => sortHeader("size") },
+      {
+        label: `${tick("modTime")}Sort by modified`,
+        hint: "Ctrl+F5",
+        run: () => sortHeader("modTime"),
+      },
+    ];
+  };
+
+  // Right-click on empty space below the last row: the reflex of every file
+  // manager user who cannot find a control, so it must not come up empty.
+  const buildBgMenu = (): MenuItem[] => [
+    { label: "New folder…", hint: "F7", run: doMkdir },
+    { label: "Refresh", hint: "Ctrl+R", run: nav.reload },
+    {
+      label: "Select all",
+      hint: "Ctrl+A",
+      run: () => setMarks(new Set(entries.map((x) => x.name))),
+    },
+    ...sortItems(),
+  ];
+
   // Right-click menu items for the entry under the pointer (acting on the
   // full mark set when the entry is part of it).
   const buildMenu = (entry: FsEntry): MenuItem[] => {
@@ -634,6 +809,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
       label: "Copy path",
       run: () => void navigator.clipboard.writeText(joinHere(entry.name)),
     });
+    items.push(...sortItems());
     items.push({ label: "Refresh", hint: "Ctrl+R", run: nav.reload });
     items.push({
       label: `Delete${count}`,
@@ -645,41 +821,62 @@ export default function FilePane({ side }: { side: PaneSide }) {
   };
 
   const onListKeyDown = (ev: React.KeyboardEvent) => {
-    if (!entries.length && !["Backspace"].includes(ev.key)) return;
+    // Escape first, and before the empty-listing bail: it is the only way
+    // out of a filter that matched nothing.
+    if (ev.key === "Escape") {
+      ev.preventDefault();
+      typeahead.current = { buf: "", at: 0 };
+      setTaHint("");
+      if (filter !== null) setFilter(null);
+      return;
+    }
+    if (!entries.length && ev.key !== "Backspace") return;
     const e = entries[cursor];
+    // Page by what is actually on screen: the pane height is user-driven,
+    // so a hardcoded 20 rows overshoots on a short window and undershoots
+    // on a tall one. The -1 keeps a row of context, as Explorer does.
+    const page = Math.max(
+      1,
+      Math.floor((scrollRef.current?.clientHeight ?? ROW_H * 20) / ROW_H) - 1,
+    );
     if (ev.key === "ArrowDown") {
       ev.preventDefault();
-      moveCursor(Math.min(cursor + 1, entries.length - 1));
+      moveTo(cursor + 1, ev.shiftKey);
     } else if (ev.key === "ArrowUp") {
       ev.preventDefault();
-      moveCursor(Math.max(cursor - 1, 0));
+      moveTo(cursor - 1, ev.shiftKey);
     } else if (ev.key === "Home") {
       ev.preventDefault();
-      moveCursor(0);
+      moveTo(0, ev.shiftKey);
     } else if (ev.key === "End") {
       ev.preventDefault();
-      moveCursor(entries.length - 1);
+      moveTo(entries.length - 1, ev.shiftKey);
     } else if (ev.key === "PageDown") {
       ev.preventDefault();
-      moveCursor(Math.min(cursor + 20, entries.length - 1));
+      moveTo(cursor + page, ev.shiftKey);
     } else if (ev.key === "PageUp") {
       ev.preventDefault();
-      moveCursor(Math.max(cursor - 20, 0));
+      moveTo(cursor - page, ev.shiftKey);
     } else if (ev.key === "Enter") {
       ev.preventDefault();
       if (e) open(e);
     } else if (ev.key === "Backspace") {
       ev.preventDefault();
-      nav.up();
+      goUp();
     } else if (ev.key === "Insert") {
       ev.preventDefault();
       if (e) {
         toggleMark(e.name);
-        moveCursor(Math.min(cursor + 1, entries.length - 1));
+        moveTo(cursor + 1, false); // anchor follows, so a later shift+click ranges from here
       }
     } else if (ev.key === " ") {
       ev.preventDefault();
-      if (e) toggleMark(e.name);
+      // Space feeds the prefix search only while the buffer is still warm,
+      // so "The Big Short" stays reachable; a bare Space still marks
+      // (ux-spec §3.1). Insert remains the unambiguous mark key.
+      const t = typeahead.current;
+      if (t.buf !== "" && Date.now() - t.at <= TYPEAHEAD_MS) jumpTo(" ");
+      else if (e) toggleMark(e.name);
     } else if (ev.key === "*") {
       ev.preventDefault();
       invertMarks();
@@ -689,10 +886,13 @@ export default function FilePane({ side }: { side: PaneSide }) {
     } else if (ev.ctrlKey && ev.key.toLowerCase() === "a") {
       ev.preventDefault();
       setMarks(new Set(entries.map((x) => x.name)));
-    } else if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
-      // typing opens the filter strip (ux-spec §3.5)
+    } else if (ev.ctrlKey && (ev.key === "F3" || ev.key === "F5" || ev.key === "F6")) {
+      // WinSCP sort hotkeys (ux-spec §3.1); there is no "ext" key to bind F4.
       ev.preventDefault();
-      setFilter((f) => (f ?? "") + ev.key);
+      sortHeader(ev.key === "F3" ? "name" : ev.key === "F5" ? "modTime" : "size");
+    } else if (ev.key.length === 1 && !ev.ctrlKey && !ev.altKey && !ev.metaKey) {
+      ev.preventDefault();
+      jumpTo(ev.key);
     }
   };
 
@@ -724,14 +924,30 @@ export default function FilePane({ side }: { side: PaneSide }) {
     }
   };
 
+  /** True when a scroller click landed on a row, or on the scrollbar itself —
+      dragging the scrollbar must not wipe the selection. */
+  const onRowOrScrollbar = (ev: React.MouseEvent<HTMLDivElement>) => {
+    if ((ev.target as HTMLElement).closest(".row")) return true;
+    const el = ev.currentTarget;
+    return ev.clientX - el.getBoundingClientRect().left > el.clientWidth;
+  };
+
+  // Every column reserves a chevron slot and reveals it on hover, so the
+  // labels stop shifting sideways and the sort gesture advertises itself.
+  const chevClass = (k: SortKey) =>
+    `phead__dir ${sort.key === k ? (sort.desc ? "phead__dir--desc" : "phead__dir--asc") : "phead__dir--idle"}`;
+  const ariaSort = (k: SortKey): "ascending" | "descending" | "none" =>
+    sort.key === k ? (sort.desc ? "descending" : "ascending") : "none";
+
   const switchSource = async (value: string) => {
     if (value === "local") {
       // Honour the saved default folder, falling back to home when it is
       // gone (localStart probes it rather than trusting the setting).
       const cfg = await getSettings().catch(() => ({}) as Record<string, string>);
       setPane(side, "local", await localStart(cfg["ui.local_default"]));
+      refocusList(); // the native <select> keeps the arrow keys otherwise
     } else if (value === "__new__") {
-      setQuickConnect(true, side);
+      setQuickConnect(true, side); // the dialog wants the focus, not the list
     } else {
       const id = Number(value);
       try {
@@ -743,6 +959,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
           new CustomEvent("ws:toast", { detail: { kind: "error", text: String(err) } }),
         );
       }
+      refocusList();
     }
   };
 
@@ -798,7 +1015,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
         </button>
         <button
           className="pane__btn"
-          onClick={nav.up}
+          onClick={goUp}
           disabled={!nav.listing?.parent}
           title="Up (Backspace)"
         >
@@ -835,9 +1052,11 @@ export default function FilePane({ side }: { side: PaneSide }) {
             onKeyDown={(e) => {
               if (e.key === "Escape") {
                 setFilter(null);
-                scrollRef.current?.focus();
+                refocusList();
               } else if (e.key === "Enter") {
-                scrollRef.current?.focus();
+                // A filter matching nothing unmounts the scroller — hand
+                // focus to the empty panel so Escape still has a listener.
+                refocusList();
               }
               e.stopPropagation();
             }}
@@ -871,7 +1090,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
               <button className="btn" onClick={nav.reload}>
                 Retry
               </button>
-              <button className="btn" onClick={nav.up}>
+              <button className="btn" onClick={goUp}>
                 Go up
               </button>
             </div>
@@ -883,60 +1102,110 @@ export default function FilePane({ side }: { side: PaneSide }) {
             <div key={i} style={{ width: `${90 - i * 7}%` }} />
           ))}
         </div>
-      ) : entries.length === 0 ? (
-        <div className="pane__empty">
-          <div>{filter ? `No matches for “${filter}”` : "Empty directory"}</div>
-          <div>{filter ? "Esc to clear" : ""}</div>
-        </div>
       ) : (
-        <div className="pane__list" style={colStyle}>
+        <div
+          className="pane__list"
+          style={colStyle}
+          role="grid"
+          aria-rowcount={entries.length + 1}
+          aria-multiselectable="true"
+        >
           {/* Sortable, resizable headings: click to sort, drag the divider
-              beside Size or Modified to give the name column more room. */}
-          <div className="row row--head" role="row">
-            <button
-              className={`phead ${sort.key === "name" ? "phead--on" : ""}`}
-              onClick={() => toggleSort("name")}
-              title="Sort by name"
-            >
-              {SORT_LABEL.name}
-              {sort.key === "name" && (
-                <ChevronRight
-                  size={9}
-                  className={`phead__dir ${sort.desc ? "phead__dir--desc" : "phead__dir--asc"}`}
-                />
-              )}
-            </button>
-            {PANE_COLUMNS.map((c) => {
-              const key: SortKey = c.id === "psize" ? "size" : "modTime";
-              return (
+              beside Size or Modified to give the name column more room. The
+              grip is a SIBLING of the button, and pane.css reserves the
+              padding it sits in — overlapping the button by even a few px
+              hands those clicks to the grip and the sort never fires. */}
+          <div role="rowgroup">
+            <div className="row row--head" role="row">
+              <div
+                className="phead-cell"
+                role="columnheader"
+                aria-colindex={1}
+                aria-sort={ariaSort("name")}
+              >
                 <button
-                  key={c.id}
-                  className={`phead phead--num ${sort.key === key ? "phead--on" : ""}`}
-                  onClick={() => toggleSort(key)}
-                  title={`Sort by ${c.label.toLowerCase()}`}
+                  className={`phead ${sort.key === "name" ? "phead--on" : ""}`}
+                  onClick={() => sortHeader("name")}
+                  title="Sort by name — click again to reverse"
                 >
-                  {sort.key === key && (
-                    <ChevronRight
-                      size={9}
-                      className={`phead__dir ${sort.desc ? "phead__dir--desc" : "phead__dir--asc"}`}
-                    />
-                  )}
-                  {c.label}
-                  <span
-                    className="phead__grip"
-                    role="separator"
-                    aria-orientation="vertical"
-                    aria-label={`Resize ${c.label}`}
-                    onMouseDown={(e) => startResize(c.id, e)}
-                    onClick={(e) => e.stopPropagation()}
-                  />
+                  {SORT_LABEL.name}
+                  <ChevronRight size={9} className={chevClass("name")} />
                 </button>
-              );
-            })}
+              </div>
+              {PANE_COLUMNS.map((c, i) => {
+                const key: SortKey = c.id === "psize" ? "size" : "modTime";
+                return (
+                  <div
+                    key={c.id}
+                    className="phead-cell"
+                    role="columnheader"
+                    aria-colindex={i + 2}
+                    aria-sort={ariaSort(key)}
+                  >
+                    <button
+                      className={`phead phead--num ${sort.key === key ? "phead--on" : ""}`}
+                      onClick={() => sortHeader(key)}
+                      title={`Sort by ${c.label.toLowerCase()} — click again to reverse`}
+                    >
+                      <ChevronRight size={9} className={chevClass(key)} />
+                      {c.label}
+                    </button>
+                    <span
+                      className="phead__grip"
+                      role="separator"
+                      aria-orientation="vertical"
+                      aria-label={`Resize ${c.label}`}
+                      onMouseDown={(e) => startResize(c.id, e)}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
-        <div className="pane__scroll" ref={scrollRef} tabIndex={0} onKeyDown={onListKeyDown} role="grid">
-          <div style={{ height: virtualizer.getTotalSize(), position: "relative" }}>
+        {entries.length === 0 ? (
+          // Explorer keeps the header row over an empty folder, and a filter
+          // that matched nothing is where the user most needs Escape — so
+          // this branch has to carry the key handler too.
+          <div
+            className="pane__empty"
+            ref={emptyRef}
+            tabIndex={0}
+            onKeyDown={onListKeyDown}
+            onContextMenu={(ev) => {
+              ev.preventDefault();
+              setActivePane(side);
+              setBgMenu({ x: ev.clientX, y: ev.clientY });
+            }}
+          >
+            <div>{filter ? `No matches for “${filter}”` : "Empty directory"}</div>
+            <div>{filter ? "Esc to clear" : ""}</div>
+          </div>
+        ) : (
+        <div
+          className="pane__scroll"
+          ref={scrollRef}
+          tabIndex={0}
+          onKeyDown={onListKeyDown}
+          role="rowgroup"
+          onMouseDown={(ev) => {
+            if (onRowOrScrollbar(ev)) return;
+            setActivePane(side);
+            setMarks(new Set());
+          }}
+          onContextMenu={(ev) => {
+            if (onRowOrScrollbar(ev)) return;
+            ev.preventDefault();
+            setActivePane(side);
+            setBgMenu({ x: ev.clientX, y: ev.clientY });
+          }}
+        >
+          {/* Presentational: the virtualizer's spacer must not sit between
+              the rowgroup and its rows as far as a screen reader is told. */}
+          <div
+            role="presentation"
+            style={{ height: virtualizer.getTotalSize(), position: "relative" }}
+          >
             {virtualizer.getVirtualItems().map((vi) => {
               const e = entries[vi.index];
               const RowIcon = typeIcon(e);
@@ -965,41 +1234,77 @@ export default function FilePane({ side }: { side: PaneSide }) {
                     setMenu({ x: ev.clientX, y: ev.clientY, entry: e });
                   }}
                   role="row"
+                  aria-rowindex={vi.index + 2}
                   aria-selected={marks.has(e.name)}
                 >
-                  <span className="row__name">
+                  <span className="row__name" title={e.name}>
                     <span className={e.isDir ? "row__icon row__icon--dir" : "row__icon"}>
                       <RowIcon size={15} />
                     </span>
                     {e.name}
                   </span>
-                  <span className="row__size">{formatSize(e.size)}</span>
+                  {/* Folders carry the -1 size sentinel, which formats to an
+                      empty string — a whole column of nothing on a seedbox
+                      root reads as a column that cannot be sorted. */}
+                  <span className="row__size">{e.isDir ? "—" : formatSize(e.size)}</span>
                   <span className="row__time">{formatTime(e.modTime)}</span>
                 </div>
               );
             })}
           </div>
         </div>
+        )}
         </div>
       )}
         </div>
       </div>
 
+      {/* Every dismissable surface hands focus back: without it the list is
+          keyboard-dead after F7, F2, a delete confirm or any menu action. */}
       {menu && (
-        <ContextMenu x={menu.x} y={menu.y} items={buildMenu(menu.entry)} onClose={() => setMenu(null)} />
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          items={buildMenu(menu.entry)}
+          onClose={() => {
+            setMenu(null);
+            refocusList();
+          }}
+        />
+      )}
+      {bgMenu && (
+        <ContextMenu
+          x={bgMenu.x}
+          y={bgMenu.y}
+          items={buildBgMenu()}
+          onClose={() => {
+            setBgMenu(null);
+            refocusList();
+          }}
+        />
       )}
       {pathMenu && (
         <ContextMenu
           x={pathMenu.x}
           y={pathMenu.y}
           items={buildPathMenu()}
-          onClose={() => setPathMenu(null)}
+          onClose={() => {
+            setPathMenu(null);
+            refocusList();
+          }}
         />
       )}
-      <PromptDialog spec={prompt} onClose={() => setPrompt(null)} />
+      <PromptDialog
+        spec={prompt}
+        onClose={() => {
+          setPrompt(null);
+          refocusList();
+        }}
+      />
 
       <footer className="pane__status">
         <span>{all.length} items</span>
+        {taHint && <span className="pane__typeahead">{taHint}</span>}
         {marks.size > 0 && (
           <span className="marked">
             {marks.size} marked · {formatSize(markedSize)}

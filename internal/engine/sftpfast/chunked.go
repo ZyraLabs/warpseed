@@ -21,6 +21,12 @@ const chunkBuffer = 4 << 20
 // size and sparse, so the single-connection resume path (which infers its
 // offset from file size) would mistake it for a finished download and
 // publish a file full of holes.
+//
+// The upload side is the mirror image, and worse because the holes end up on
+// the server: if the linear Upload ever adopted a .wschunk as its resume
+// part, offset would equal localSize, the offset < localSize guard would be
+// false, no bytes would be sent, and the rename would publish a full-size
+// file of holes.
 const ChunkPartSuffix = ".wschunk"
 
 // checkpointEvery and checkpointInterval bound how much work an ungraceful
@@ -259,7 +265,9 @@ func fetchRange(
 		n, rerr := rf.ReadAt(buf[:want], pos)
 		if n > 0 {
 			if _, werr := lf.WriteAt(buf[:n], pos); werr != nil {
-				checkpoint(r.Idx, done)
+				if cerr := commit(); cerr != nil {
+					return errors.Join(werr, cerr)
+				}
 				return fmt.Errorf("write chunk %d at %d: %w", r.Idx, pos, werr)
 			}
 			pos += int64(n)
