@@ -25,7 +25,9 @@ function TreeNode({
   currentPath,
   onNavigate,
 }: DirTreeProps & { node: Node; depth: number }) {
-  const [expanded, setExpanded] = useState(depth === 0);
+  // Everything starts collapsed, roots included: opening the sidebar should
+  // show the shape of the drive, not fire a listing per root.
+  const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<Node[] | null>(null);
 
   useEffect(() => {
