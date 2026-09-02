@@ -9,6 +9,7 @@ import {
   DeleteSite,
   DisconnectSite,
   EnqueueDownloads,
+  LogDir,
   EnqueueUploads,
   GetSettings,
   AddBookmark,
@@ -143,6 +144,9 @@ export const renameEntry = (
   source === "local"
     ? RenameLocal(path, newName, dir)
     : RenameRemote(source, path, newName, dir);
+
+/** Opens the folder holding warpseed.log and returns its path. */
+export const logDir = (): Promise<string> => LogDir() as Promise<string>;
 
 // --- bookmarks and pane defaults ---
 

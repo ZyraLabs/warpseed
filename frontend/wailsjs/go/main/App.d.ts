@@ -69,6 +69,8 @@ export function SaveSite(arg1:queue.Site,arg2:string):Promise<queue.Site>;
 
 export function SchemaVersion():Promise<number>;
 
+export function LogDir():Promise<string>;
+
 export function SetMiniMode(arg1:boolean):Promise<void>;
 
 export function SetSetting(arg1:string,arg2:string):Promise<void>;

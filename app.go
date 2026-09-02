@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"log"
 	"net"
+	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 	"github.com/pkg/sftp"
 	wruntime "github.com/wailsapp/wails/v2/pkg/runtime"
 
+	"warpseed/internal/applog"
 	"warpseed/internal/creds"
 	"warpseed/internal/dispatch"
 	"warpseed/internal/engine/core"
@@ -40,6 +42,7 @@ type App struct {
 	creds      creds.Store
 	hostkeys   *hostkeys.Store
 	dispatcher *dispatch.Dispatcher
+	logw       *applog.Writer
 
 	mu       sync.Mutex
 	sessions map[int64]*sftpfast.Client // browse connection per connected site
@@ -56,11 +59,35 @@ func NewApp() *App {
 	}
 }
 
+// appVersion is stamped into the log so a pasted excerpt identifies its build.
+// Kept in step with wails.json productVersion, which the release workflow
+// checks against the tag.
+const appVersion = "1.1.0"
+
+// shutdownGrace is how long a close waits for in-flight transfers to record
+// their final state. Long enough for a checkpoint write to land, short enough
+// that closing never feels stuck.
+const shutdownGrace = 3 * time.Second
+
 // startup wires services once the Wails runtime context exists.
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 	a.sink = events.NewWailsSink(ctx)
 	a.broker = events.NewBroker(a.sink, 2*time.Minute)
+
+	// Redirect the standard logger to a file first, before anything below can
+	// log. A Wails GUI build has no console, so until this line every
+	// log.Printf in the codebase went to a stderr nobody could read.
+	if dir, derr := configDir(); derr == nil {
+		if w, lerr := applog.Open(dir, "warpseed.log"); lerr == nil {
+			a.logw = w
+			log.SetOutput(w)
+			log.SetFlags(log.LstdFlags | log.Lmsgprefix)
+			log.Printf("warpseed %s starting", appVersion)
+		}
+		// A logger we cannot open is not worth failing to start over; stderr
+		// stays the fallback exactly as before.
+	}
 
 	path, err := queue.DefaultPath()
 	if err != nil {
@@ -170,6 +197,15 @@ func closeAll(clients []*sftpfast.Client) {
 }
 
 func (a *App) shutdown(_ context.Context) {
+	// Stop the dispatcher and give in-flight transfers a moment to record
+	// their final state BEFORE the database closes. Without this, a transfer
+	// that finished microseconds earlier loses its "completed" write, stays
+	// 'active', and RecoverInterrupted requeues it on next launch — but the
+	// successful run already renamed its .wspart away, so there is nothing to
+	// resume from and the whole file transfers again from byte zero.
+	if a.dispatcher != nil {
+		a.dispatcher.Stop(shutdownGrace)
+	}
 	a.mu.Lock()
 	for id, c := range a.sessions {
 		c.Close()
@@ -179,6 +215,29 @@ func (a *App) shutdown(_ context.Context) {
 	if a.store != nil {
 		a.store.Close()
 	}
+	if a.logw != nil {
+		log.SetOutput(os.Stderr) // nothing may write to a closed file
+		a.logw.Close()
+	}
+}
+
+// LogDir opens the folder holding warpseed.log in Explorer, so a bug report
+// can carry the log without the user hunting through %APPDATA%.
+func (a *App) LogDir() (string, error) {
+	dir, err := configDir()
+	if err != nil {
+		return "", err
+	}
+	return dir, openInFileManager(dir)
+}
+
+// configDir is where the database and the log live, side by side.
+func configDir() (string, error) {
+	base, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve config dir: %w", err)
+	}
+	return filepath.Join(base, "warpseed"), nil
 }
 
 var errNoStore = errors.New("queue database unavailable")

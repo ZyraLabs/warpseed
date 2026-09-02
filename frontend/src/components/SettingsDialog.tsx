@@ -5,6 +5,7 @@ import {
   deleteSite,
   getSettings,
   openDataFolder,
+  logDir,
   openExternal,
   type DataInfo,
   saveSite,
@@ -471,6 +472,9 @@ export default function SettingsDialog() {
             </button>
             <button className="btn" onClick={() => openExternal(bugReportUrl())}>
               <Bug size={12} className="btn__ico" /> Report a bug
+            </button>
+            <button className="btn" onClick={() => void logDir()} title="warpseed.log — attach it to a bug report">
+              Open log folder
             </button>
             <span style={{ flex: 1 }} />
             <button className="btn btn--primary" onClick={() => openExternal(DONATE_URL)}>

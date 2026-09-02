@@ -59,6 +59,7 @@ type Dispatcher struct {
 	wake    chan struct{}
 
 	mu      sync.Mutex
+	running sync.WaitGroup // in-flight runTransfer goroutines, for Stop
 	cancels map[int64]context.CancelFunc
 	slots   map[int64]int // connections reserved per active transfer
 	perSite map[int64]int
@@ -257,6 +258,7 @@ func (d *Dispatcher) pump(ctx context.Context) {
 			log.Printf("dispatch: mark started %d: %v", t.ID, serr)
 		}
 		d.emitState(t.ID, "active", "")
+		d.running.Add(1)
 		go d.runTransfer(tctx, t, streams)
 	}
 }
@@ -357,6 +359,36 @@ func (d *Dispatcher) resize(t queue.Transfer, actual int) {
 	d.Wake()
 }
 
+// Stop cancels every running transfer and waits up to grace for their final
+// state writes to land. Called on shutdown BEFORE the store closes: a
+// transfer that completes while the database is closing loses its
+// "completed" write, and because a successful run has already renamed its
+// partial file away, the requeue on next launch has nothing to resume from
+// and re-transfers the whole file.
+//
+// Returns whether everything finished in time; a timeout is not an error the
+// caller can do anything about, but it is worth logging.
+func (d *Dispatcher) Stop(grace time.Duration) bool {
+	d.mu.Lock()
+	for _, cancel := range d.cancels {
+		cancel()
+	}
+	d.mu.Unlock()
+
+	done := make(chan struct{})
+	go func() {
+		d.running.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(grace):
+		log.Printf("dispatch: %s grace expired with transfers still stopping", grace)
+		return false
+	}
+}
+
 func (d *Dispatcher) release(t queue.Transfer) {
 	d.mu.Lock()
 	if slots, ok := d.slots[t.ID]; ok {
@@ -369,6 +401,7 @@ func (d *Dispatcher) release(t queue.Transfer) {
 }
 
 func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams int) {
+	defer d.running.Done()
 	defer d.release(t)
 	defer d.Wake() // a freed slot may unblock the next pending row
 
