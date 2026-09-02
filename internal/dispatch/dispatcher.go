@@ -216,9 +216,21 @@ func (d *Dispatcher) pump(ctx context.Context) {
 
 		d.mu.Lock()
 		if d.activeN+streams > globalCap || d.perSite[t.SiteID]+streams > siteCap {
-			// Let a multi-stream transfer through alone rather than starving
-			// it forever when the caps are smaller than its stream count.
-			if !(d.activeN == 0 && d.perSite[t.SiteID] == 0) {
+			// Take what is free rather than holding out for the full request.
+			// A 4-lane download must not sit behind a 3-lane upload just
+			// because 3+4 exceeds a cap of 6 — it runs on the spare lane and
+			// the engine plans to the clients it is actually given.
+			avail := globalCap - d.activeN
+			if free := siteCap - d.perSite[t.SiteID]; free < avail {
+				avail = free
+			}
+			switch {
+			case avail >= 1:
+				streams = avail
+			case d.activeN == 0 && d.perSite[t.SiteID] == 0:
+				// Caps smaller than one transfer's stream count: let it
+				// through alone rather than starving it forever.
+			default:
 				d.mu.Unlock()
 				continue
 			}

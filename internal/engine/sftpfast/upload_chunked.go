@@ -20,6 +20,11 @@ import (
 // must fall back to the single-stream Upload.
 var ErrChunkPreallocUnsupported = errors.New("server cannot preallocate the remote part file")
 
+// uploadSyncInterval bounds how often a lane asks the server to fsync the
+// part file. A remote fsync flushes the whole file, so it cannot ride the
+// per-checkpoint byte bound the way the download's local sync does.
+const uploadSyncInterval = 30 * time.Second
+
 // resumeVerifyBytes is how much of each already-claimed range is read back
 // from the server and compared against the local source before its bytes are
 // trusted. Head and tail are both sampled: the tail catches a torn write, the
@@ -415,15 +420,22 @@ func sendRange(
 	sinceCheckpoint := int64(0)
 	lastCheckpoint := time.Now()
 
-	// Same durability ordering as the download side: bytes reach the server,
-	// THEN the checkpoint records them. Where the server has no fsync the
-	// WRITE status reply is the acknowledgement — the analogue of a successful
-	// write(2) — and the resume read-back covers the rest.
-	commit := func() error {
-		if fsyncOK {
+	// Bytes reach the server, THEN the checkpoint records them — but a remote
+	// fsync is not the download side's cheap local one. It flushes the WHOLE
+	// part file, so every lane pays for every other lane's dirty pages: at one
+	// sync per 8 MiB per lane that is a full-file flush every ~2.7 MiB of
+	// aggregate progress, which measured ~880 KiB/s against a real seedbox.
+	// So sync on the time bound and at the end of a range, not per checkpoint.
+	// The gap that opens is exactly what the resume read-back covers: it
+	// re-reads the head and tail of every claimed range before trusting it, so
+	// a crash that loses an unsynced tail is caught rather than assumed good.
+	lastSync := time.Now()
+	commit := func(force bool) error {
+		if fsyncOK && (force || time.Since(lastSync) >= uploadSyncInterval) {
 			if err := rf.Sync(); err != nil {
 				return fmt.Errorf("sync chunk %d: %w", r.Idx, err)
 			}
+			lastSync = time.Now()
 		}
 		checkpoint(r.Idx, done)
 		sinceCheckpoint = 0
@@ -433,7 +445,7 @@ func sendRange(
 
 	for pos < end {
 		if err := ctx.Err(); err != nil {
-			if cerr := commit(); cerr != nil {
+			if cerr := commit(true); cerr != nil {
 				return cerr
 			}
 			return fmt.Errorf("chunk %d cancelled: %w", r.Idx, err)
@@ -456,7 +468,7 @@ func sendRange(
 				progress(r.Idx, int64(w))
 			}
 			if werr != nil {
-				if cerr := commit(); cerr != nil {
+				if cerr := commit(true); cerr != nil {
 					return errors.Join(werr, cerr)
 				}
 				return fmt.Errorf("write chunk %d at %d: %w", r.Idx, pos, werr)
@@ -465,7 +477,7 @@ func sendRange(
 			// much rework. The time bound matters on a throttled or slow link,
 			// where the byte bound alone could be minutes away.
 			if sinceCheckpoint >= checkpointEvery || time.Since(lastCheckpoint) >= checkpointInterval {
-				if cerr := commit(); cerr != nil {
+				if cerr := commit(false); cerr != nil {
 					return cerr
 				}
 			}
@@ -475,13 +487,13 @@ func sendRange(
 			if errors.Is(rerr, io.EOF) && pos >= end {
 				break
 			}
-			if cerr := commit(); cerr != nil {
+			if cerr := commit(true); cerr != nil {
 				return cerr
 			}
 			return fmt.Errorf("read chunk %d at %d: %w", r.Idx, pos, rerr)
 		}
 	}
-	return commit()
+	return commit(true)
 }
 
 // finalizeRemoteChunked publishes the assembled remote file. Ranges are written
