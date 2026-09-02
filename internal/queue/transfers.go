@@ -27,19 +27,38 @@ type Transfer struct {
 	SrcMtime  int64  `json:"srcMtime"`
 	CreatedAt string `json:"createdAt"`
 	UpdatedAt string `json:"updatedAt"`
+	// StartedAt/StartBytes describe the CURRENT run, not the row's whole
+	// life: they are re-stamped every time the transfer is claimed, so a
+	// resumed transfer reports the speed of the run you actually watched.
+	StartedAt  *string `json:"startedAt"`
+	StartBytes int64   `json:"startBytes"`
 }
 
 var ErrTransferNotFound = errors.New("transfer not found")
 
 const transferCols = `id,site_id,engine,direction,src,dst,size,state,priority,
-	bytes_done,attempt,next_retry_at,error,src_mtime,created_at,updated_at`
+	bytes_done,attempt,next_retry_at,error,src_mtime,created_at,updated_at,
+	started_at,start_bytes`
 
 func scanTransfer(row interface{ Scan(...any) error }) (Transfer, error) {
 	var t Transfer
 	err := row.Scan(&t.ID, &t.SiteID, &t.Engine, &t.Direction, &t.Src, &t.Dst,
 		&t.Size, &t.State, &t.Priority, &t.BytesDone, &t.Attempt,
-		&t.NextRetryAt, &t.Error, &t.SrcMtime, &t.CreatedAt, &t.UpdatedAt)
+		&t.NextRetryAt, &t.Error, &t.SrcMtime, &t.CreatedAt, &t.UpdatedAt,
+		&t.StartedAt, &t.StartBytes)
 	return t, err
+}
+
+// MarkTransferStarted stamps the beginning of a run. Called once per claim,
+// so a transfer that resumes three times reports the last run's speed rather
+// than an average smeared across the pauses between them.
+func (s *Store) MarkTransferStarted(id int64, at string, startBytes int64) error {
+	_, err := s.db.Exec(
+		`UPDATE transfers SET started_at=?, start_bytes=? WHERE id=?`, at, startBytes, id)
+	if err != nil {
+		return fmt.Errorf("mark transfer started: %w", err)
+	}
+	return nil
 }
 
 // SetTransferSrcMtime records the source mtime a chunk plan was built for.

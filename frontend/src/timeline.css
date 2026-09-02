@@ -9,7 +9,10 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-1);
   overflow: hidden;
+  /* Column, not the default row: the summary band stacks ABOVE the feed.
+     As a row it became a sibling column and stretched to full height. */
   display: flex;
+  flex-direction: column;
 }
 
 .tl__scroll {
@@ -132,4 +135,47 @@
   margin: 60px auto;
   font-size: var(--text-sm);
   color: var(--text-faint);
+}
+
+/* Summary band: four numbers above the spine, so the view answers "how fast
+   is this going" before you read a single row. Sits outside .tl__scroll so it
+   stays put while the story scrolls under it. */
+.tl__summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  /* Matches .tl__scroll's inline padding so the band lines up with the feed;
+     the scroll's own 22px top padding supplies the gap beneath. */
+  margin: 22px 32px 0;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  flex: none;
+}
+.tl__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 14px;
+  background: var(--surface-card);
+}
+.tl__stat-k {
+  font-size: var(--text-2xs);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+}
+/* Rates and totals are data, so they take the data face (ux-spec 6.3). */
+.tl__stat-v {
+  font-family: var(--font-data);
+  font-size: var(--text-lg);
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+.tl__stat-s { font-size: var(--text-2xs); color: var(--text-dim); }
+
+@media (max-width: 760px) {
+  .tl__summary { grid-template-columns: repeat(2, 1fr); }
 }

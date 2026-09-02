@@ -124,4 +124,15 @@ var migrations = []string{
 		('transfers.upload_chunk_min_mb','128'),
 		('transfers.upload_chunk_streams','3');
 	`,
+
+	// 008 — per-run timing, so Activity can report a real transfer speed.
+	// created_at is when the row was QUEUED, which on a long queue is hours
+	// before it ran; only a start stamp can date the transfer itself.
+	// start_bytes is what made this honest: a resumed transfer moves
+	// size-start_bytes in this run, and dividing the whole size by the run's
+	// duration would overstate the speed of everything that ever resumed.
+	`
+	ALTER TABLE transfers ADD COLUMN started_at TEXT;
+	ALTER TABLE transfers ADD COLUMN start_bytes INTEGER NOT NULL DEFAULT 0;
+	`,
 }

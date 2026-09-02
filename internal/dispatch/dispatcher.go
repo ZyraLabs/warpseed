@@ -251,6 +251,11 @@ func (d *Dispatcher) pump(ctx context.Context) {
 			d.release(t)
 			continue
 		}
+		// Stamp the run so Activity can report a real speed. Best-effort:
+		// losing a timestamp costs a "—" in one row, never the transfer.
+		if serr := d.store.MarkTransferStarted(t.ID, now, t.BytesDone); serr != nil {
+			log.Printf("dispatch: mark started %d: %v", t.ID, serr)
+		}
 		d.emitState(t.ID, "active", "")
 		go d.runTransfer(tctx, t, streams)
 	}

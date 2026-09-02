@@ -203,6 +203,12 @@ export interface Transfer {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Start of the CURRENT run, re-stamped on every claim; null until a
+      transfer has actually been picked up. */
+  startedAt?: string | null;
+  /** bytes_done when this run began — a resumed transfer moved
+      size - startBytes, not size. */
+  startBytes?: number;
 }
 
 export interface DownloadItem {

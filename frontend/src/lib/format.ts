@@ -22,6 +22,18 @@ export function formatTime(rfc3339: string): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/** Compact elapsed time: "8s", "4m 12s", "1h 06m". Seconds are dropped past
+    an hour, where they are noise rather than information. */
+export function formatDuration(ms: number): string {
+  const total = Math.max(0, Math.round(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  if (h > 0) return `${h}h ${String(m).padStart(2, "0")}m`;
+  if (m > 0) return `${m}m ${String(s).padStart(2, "0")}s`;
+  return `${s}s`;
+}
+
 /** Translate the engine's raw error strings into plain language where the
     pattern is known; unknown errors pass through untouched. */
 export function describeTransferError(err: string): string {

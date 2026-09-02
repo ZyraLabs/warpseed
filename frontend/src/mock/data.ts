@@ -341,6 +341,8 @@ export const TRANSFERS: Transfer[] = [
     error: null,
     createdAt: iso(41),
     updatedAt: iso(38),
+    startedAt: iso(42),
+    startBytes: 0,
   },
   {
     id: 99,
