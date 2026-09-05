@@ -5,10 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+	"warpseed/internal/applog"
 )
 
 // chunkBuffer is the read size per request batch. Large enough that
@@ -102,12 +104,25 @@ func DownloadChunks(
 		}
 	}
 
-	// Size the destination once so workers can write at any offset. Truncate
-	// creates a sparse file on both NTFS and ext4 — no zero-fill stall even
-	// for a 50 GB target.
+	// Size the destination once so workers can write at any offset. On ext4
+	// a bare Truncate already yields a sparse file; on NTFS it does not —
+	// the file must be flagged sparse first, or the first write past the
+	// valid-data length makes the kernel zero-fill everything below it
+	// inside an uncancellable WriteFile (see markSparse).
+	//
+	// This block runs on EVERY attempt, resume included, on purpose: a part
+	// left by a build that did not flag it (1.1.0) is only cheap to resume
+	// because the flag is applied again here. Do not skip it when the part
+	// already has the right size.
+	name := filepath.Base(localPath)
 	sizer, err := os.OpenFile(part, os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return fmt.Errorf("create part file: %w", err)
+	}
+	if err := markSparse(sizer); err != nil {
+		// Not fatal: a volume that refuses (FAT32, some network shares)
+		// still works, only with the zero-fill cost. Said per attempt.
+		log.Printf("sftpfast: sparse flag on %s refused (%v); first writes may stall while the volume zero-fills", name, err)
 	}
 	if err := sizer.Truncate(size); err != nil {
 		sizer.Close()
@@ -135,6 +150,7 @@ func DownloadChunks(
 	work := make(chan ChunkRange, len(ranges))
 	for _, r := range ranges {
 		account(int64(r.Idx), r.Done)
+		applog.Debugf("sftpfast: chunk %d of %s: offset %d length %d done %d", r.Idx, name, r.Offset, r.Length, r.Done)
 		if r.Remaining() > 0 {
 			work <- r
 		}
@@ -188,7 +204,7 @@ func DownloadChunks(
 					account(int64(idx), done)
 					checkpoint(idx, done)
 				}
-				if err := fetchRange(wctx, rf, lf, r, buf, progress, record); err != nil {
+				if err := fetchRange(wctx, name, rf, lf, r, buf, progress, record); err != nil {
 					fail(err)
 					return
 				}
@@ -219,6 +235,7 @@ func DownloadChunks(
 // fetchRange copies one range, resuming at its recorded offset.
 func fetchRange(
 	ctx context.Context,
+	name string,
 	rf io.ReaderAt,
 	lf interface {
 		io.WriterAt
@@ -234,6 +251,7 @@ func fetchRange(
 	done := r.Done
 	sinceCheckpoint := int64(0)
 	lastCheckpoint := time.Now()
+	first := true
 
 	// Durability ordering, non-negotiable: bytes hit the disk, THEN the
 	// checkpoint records them. A checkpoint that runs first can claim bytes
@@ -264,7 +282,15 @@ func fetchRange(
 		// pipeline inside this range, on top of the cross-range parallelism.
 		n, rerr := rf.ReadAt(buf[:want], pos)
 		if n > 0 {
-			if _, werr := lf.WriteAt(buf[:n], pos); werr != nil {
+			wstart := time.Now()
+			_, werr := lf.WriteAt(buf[:n], pos)
+			if first {
+				// The first write of a range is where a non-sparse volume
+				// pays its zero-fill; a long number here is that stall.
+				applog.Debugf("sftpfast: chunk %d of %s: first write at %d took %s", r.Idx, name, pos, time.Since(wstart).Round(time.Millisecond))
+				first = false
+			}
+			if werr != nil {
 				if cerr := commit(); cerr != nil {
 					return errors.Join(werr, cerr)
 				}
@@ -316,11 +342,18 @@ func finalizeChunked(part, localPath string, size int64) error {
 		f.Close()
 		return fmt.Errorf("stat assembled file: %w", err)
 	}
+	if st.Size() != size {
+		f.Close()
+		return fmt.Errorf("assembled file is %d bytes, expected %d", st.Size(), size)
+	}
+	// Every byte is accounted for, so the sparse flag has done its job;
+	// clear it so the published file is an ordinary one to Explorer and
+	// backup tools. Best effort — a refusal changes nothing about the data.
+	if err := unmarkSparse(f); err != nil {
+		applog.Debugf("sftpfast: %s: sparse flag not cleared (%v)", filepath.Base(localPath), err)
+	}
 	if err := f.Close(); err != nil {
 		return fmt.Errorf("close assembled file: %w", err)
-	}
-	if st.Size() != size {
-		return fmt.Errorf("assembled file is %d bytes, expected %d", st.Size(), size)
 	}
 	if err := os.Rename(part, localPath); err != nil {
 		return fmt.Errorf("finalize %q: %w", localPath, err)

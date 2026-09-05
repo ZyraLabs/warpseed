@@ -360,6 +360,12 @@ provider migrated servers they'll have announced it; confirm with them,
 then delete and re-add the site to re-pin the key. If they didn't, don't
 connect.
 
+**Reporting a stall or a slow cancel** — Settings → About → *Verbose log*,
+reproduce the problem, then *Open log folder* and send `warpseed.log`. The
+verbose lines show each lane's byte range, how long its first write took,
+and when a cancel was requested against when the lanes let go. Turn it off
+afterwards; it is chatty.
+
 **A transfer keeps failing** — the row shows the reason. Idle timeouts and
 resets retry automatically and resume at the byte they reached; if it
 exhausts retries, hit retry once the server is responsive again.

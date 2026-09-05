@@ -14,6 +14,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"warpseed/internal/applog"
 
 	"golang.org/x/time/rate"
 
@@ -61,9 +62,14 @@ type Dispatcher struct {
 	mu      sync.Mutex
 	running sync.WaitGroup // in-flight runTransfer goroutines, for Stop
 	cancels map[int64]context.CancelFunc
-	slots   map[int64]int // connections reserved per active transfer
-	perSite map[int64]int
-	activeN int
+	// cancelledAt is stamped at the one place a running transfer's context
+	// is cancelled, so the verbose log can report how long the lanes took
+	// to let go — the number that separates a stuck kernel write from a
+	// slow server.
+	cancelledAt map[int64]time.Time
+	slots       map[int64]int // connections reserved per active transfer
+	perSite     map[int64]int
+	activeN     int
 
 	limMu       sync.Mutex
 	limiter     *rate.Limiter // nil = unthrottled
@@ -73,13 +79,14 @@ type Dispatcher struct {
 
 func New(store *queue.Store, sink events.Sink, factory Factory) *Dispatcher {
 	return &Dispatcher{
-		store:   store,
-		sink:    sink,
-		factory: factory,
-		wake:    make(chan struct{}, 1),
-		cancels: make(map[int64]context.CancelFunc),
-		slots:   make(map[int64]int),
-		perSite: make(map[int64]int),
+		store:       store,
+		sink:        sink,
+		factory:     factory,
+		wake:        make(chan struct{}, 1),
+		cancels:     make(map[int64]context.CancelFunc),
+		cancelledAt: make(map[int64]time.Time),
+		slots:       make(map[int64]int),
+		perSite:     make(map[int64]int),
 	}
 }
 
@@ -370,7 +377,10 @@ func (d *Dispatcher) resize(t queue.Transfer, actual int) {
 // caller can do anything about, but it is worth logging.
 func (d *Dispatcher) Stop(grace time.Duration) bool {
 	d.mu.Lock()
-	for _, cancel := range d.cancels {
+	now := time.Now()
+	applog.Debugf("dispatch: shutdown: stopping %d transfer(s)", len(d.cancels))
+	for id, cancel := range d.cancels {
+		d.cancelledAt[id] = now
 		cancel()
 	}
 	d.mu.Unlock()
@@ -393,6 +403,7 @@ func (d *Dispatcher) release(t queue.Transfer) {
 	d.mu.Lock()
 	if slots, ok := d.slots[t.ID]; ok {
 		delete(d.cancels, t.ID)
+		delete(d.cancelledAt, t.ID)
 		delete(d.slots, t.ID)
 		d.perSite[t.SiteID] -= slots
 		d.activeN -= slots
@@ -404,6 +415,24 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 	defer d.running.Done()
 	defer d.release(t)
 	defer d.Wake() // a freed slot may unblock the next pending row
+	started := time.Now()
+	defer func() {
+		// Runs before release() (defers are LIFO), so the stamp is still
+		// there. A stop that takes seconds to honour is a lane stuck in
+		// the kernel or the library; this is the number that shows it.
+		if ctx.Err() == nil || !applog.Verbose() {
+			return
+		}
+		d.mu.Lock()
+		at, stamped := d.cancelledAt[t.ID]
+		d.mu.Unlock()
+		if stamped {
+			applog.Debugf("dispatch: transfer %d: lanes released %s after stop request (%s after start)", t.ID, time.Since(at).Round(time.Millisecond), time.Since(started).Round(time.Millisecond))
+		} else {
+			applog.Debugf("dispatch: transfer %d: lanes released %s after start (%v)", t.ID, time.Since(started).Round(time.Millisecond), ctx.Err())
+		}
+	}()
+	applog.Debugf("dispatch: transfer %d: starting %s %s with %d stream(s)", t.ID, t.Direction, filepath.Base(t.Src), streams)
 
 	clients, err := d.factory(ctx, t.SiteID, streams)
 	if err != nil || len(clients) == 0 {
@@ -776,8 +805,12 @@ func (d *Dispatcher) Cancel(id int64) error {
 func (d *Dispatcher) cancelIfRunning(id int64) {
 	d.mu.Lock()
 	cancel, ok := d.cancels[id]
+	if ok {
+		d.cancelledAt[id] = time.Now()
+	}
 	d.mu.Unlock()
 	if ok {
+		applog.Debugf("dispatch: transfer %d: stop requested", id)
 		cancel()
 	}
 }

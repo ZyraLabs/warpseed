@@ -476,6 +476,14 @@ export default function SettingsDialog() {
             <button className="btn" onClick={() => void logDir()} title="warpseed.log — attach it to a bug report">
               Open log folder
             </button>
+            <label className="set-check" title="Per-lane offsets, first-write timing and cancel latency in warpseed.log. Turn on when reporting a stall, then send the log.">
+              <input
+                type="checkbox"
+                checked={cfg["log.verbose"] === "1"}
+                onChange={(e) => put("log.verbose", e.target.checked ? "1" : "0")}
+              />
+              Verbose log
+            </label>
             <span style={{ flex: 1 }} />
             <button className="btn btn--primary" onClick={() => openExternal(DONATE_URL)}>
               <Heart size={12} className="btn__ico" /> Support warpseed

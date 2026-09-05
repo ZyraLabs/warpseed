@@ -1,5 +1,5 @@
 /** Release identity — the one place a URL or version number changes. */
-export const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.1.1";
 export const COMPANY = "Zyra Labs";
 export const WEBSITE_URL = "https://zyralabs.tech";
 export const DONATE_URL = "https://buymeacoffee.com/zyralabs";

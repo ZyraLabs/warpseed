@@ -62,7 +62,7 @@ func NewApp() *App {
 // appVersion is stamped into the log so a pasted excerpt identifies its build.
 // Kept in step with wails.json productVersion, which the release workflow
 // checks against the tag.
-const appVersion = "1.1.0"
+const appVersion = "1.1.1"
 
 // shutdownGrace is how long a close waits for in-flight transfers to record
 // their final state. Long enough for a checkpoint write to land, short enough
@@ -103,6 +103,12 @@ func (a *App) startup(ctx context.Context) {
 		return
 	}
 	a.store = store
+	// The verbose flag must be live before the dispatcher starts, or the
+	// first transfer of a session logs at the old level.
+	applog.SetVerbose(store.Setting("log.verbose", "") == "1")
+	if applog.Verbose() {
+		log.Printf("verbose logging on (restored from settings)")
+	}
 	a.hostkeys = hostkeys.New(store.DB())
 	if n, err := store.RecoverInterrupted(); err != nil {
 		log.Printf("queue: recover: %v", err)
@@ -1074,6 +1080,9 @@ var settingValidators = map[string]func(string) error{
 	// directions.
 	"transfers.upload_chunk_min_mb":  intRange(0, 1<<20), // 0 disables upload chunking
 	"transfers.upload_chunk_streams": intRange(1, 16),
+	// Verbose engine log: per-lane ranges, first-write latency, cancel
+	// requested vs honoured. Off by default; a bug report turns it on.
+	"log.verbose": oneOf("", "0", "1"),
 }
 
 func intRange(lo, hi int) func(string) error {
@@ -1140,6 +1149,11 @@ func (a *App) SetSetting(key, value string) error {
 	}
 	if err := a.store.SetSetting(key, value); err != nil {
 		return err
+	}
+	if key == "log.verbose" {
+		on := value == "1"
+		applog.SetVerbose(on)
+		log.Printf("verbose logging %s", map[bool]string{true: "on", false: "off"}[on])
 	}
 	a.sink.Emit("settings:changed", map[string]string{"key": key, "value": value})
 	if a.dispatcher != nil {

@@ -438,6 +438,20 @@
   align-items: center;
   gap: var(--sp-2);
 }
+.set-check {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-sm);
+  color: var(--text-mid);
+  cursor: pointer;
+}
+.set-check input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
 .set-note {
   font-size: var(--text-2xs);
   color: var(--text-faint);
