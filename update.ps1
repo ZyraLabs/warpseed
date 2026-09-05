@@ -29,6 +29,10 @@ try {
     $exe = Join-Path $repo "build\bin\warpseed.exe"
     Write-Host "Built: $exe" -ForegroundColor Green
 
+    # Show the result: the exe is what gets copied or zipped next, so open
+    # its folder with the file selected rather than making the user hunt.
+    explorer.exe "/select,`"$exe`""
+
     if ($Run) {
         Start-Process $exe
     }
