@@ -1,14 +1,14 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   cancelTransfer,
   diskSpace,
   localHome,
   resumeTransfer,
-  transfersList,
   type DiskSpace,
 } from "../ipc";
 import { describeTransferError, formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
+import { nextUp } from "../lib/claimOrder";
 import { useUiStore } from "../store";
 import { Check, ChevronRight, Play, Warning } from "./Icon";
 import "../deck.css";
@@ -43,9 +43,7 @@ export default function DeckView() {
   // One refresh on mount so the view is honest even if the queue was
   // changed while a dialog swallowed events; the dock keeps it live after.
   useEffect(() => {
-    void transfersList()
-      .then(useUiStore.getState().setTransfers)
-      .catch(() => undefined);
+    void useUiStore.getState().refreshTransfers();
   }, []);
 
   const live = transfers.map((t) => {
@@ -59,7 +57,9 @@ export default function DeckView() {
     };
   });
   const active = live.filter((t) => t.state === "active").sort((a, b) => b.rate - a.rate);
-  const queued = live.filter((t) => t.state === "pending" || t.state === "dispatched");
+  // Claim order: the list itself is newest first, the wrong end for an
+  // "up next" card. Rows only, so it is not re-sorted per progress tick.
+  const queued = useMemo(() => nextUp(transfers), [transfers]);
   const failed = live.filter((t) => t.state === "failed");
   const done = live.filter((t) => t.state === "completed");
   const aggRate = active.reduce((s, t) => s + t.rate, 0);

@@ -924,7 +924,8 @@ func (a *App) expandLocalDirs(siteID int64, dirs []UploadItem, remoteDir string)
 	a.dispatcher.Wake()
 }
 
-// TransfersList returns the newest queue rows for the dock.
+// TransfersList returns the queue rows the UI shows: everything unfinished
+// plus the newest 200 finished rows (see queue.Store.Transfers).
 func (a *App) TransfersList() ([]queue.Transfer, error) {
 	if a.store == nil {
 		return nil, errNoStore

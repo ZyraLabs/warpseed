@@ -2,7 +2,7 @@
    Transfers are a live event-driven mirror of the queue (refetched on
    queue:changed; progress overlaid from transfer:progress events). */
 import { create } from "zustand";
-import type { PaneSource, Site, Transfer } from "./ipc";
+import { transfersList, type PaneSource, type Site, type Transfer } from "./ipc";
 
 interface ProgressSample {
   bytes: number;
@@ -21,6 +21,20 @@ export interface SessionEvent {
 }
 
 const SESSION_LOG_CAP = 100;
+
+/** Every refresh read gets a ticket; only the newest ticket may land, so
+    two reads resolving out of order cannot roll the list back. A read that
+    started before a transfer:state patch would also roll that row back, so
+    patches are remembered with the ticket current at the time and overlaid
+    on any list whose read started earlier. Dropping such reads instead
+    would, under sustained churn, mean no list ever lands. */
+let refreshTicket = 0;
+interface Patch {
+  state: string;
+  error?: string;
+  ticket: number;
+}
+const patches = new Map<number, Patch>();
 
 interface PaneState {
   source: PaneSource;
@@ -51,7 +65,9 @@ interface UiState {
   setConnState: (siteId: number, state: string) => void;
   setPaletteOpen: (open: boolean) => void;
   setQuickConnect: (open: boolean, side?: PaneSide) => void;
-  setTransfers: (t: Transfer[]) => void;
+  /** Refetch the queue list — the only write path for it; stale or
+      superseded responses are dropped. */
+  refreshTransfers: () => Promise<void>;
   applyProgress: (id: number, bytes: number, size: number, chunks?: number[]) => void;
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
@@ -100,7 +116,25 @@ export const useUiStore = create<UiState>((set) => ({
   setPaletteOpen: (open) => set({ paletteOpen: open }),
   setQuickConnect: (open, side) =>
     set((s) => ({ quickConnect: { open, side: side ?? s.quickConnect.side } })),
-  setTransfers: (transfers) => set({ transfers }),
+  refreshTransfers: () => {
+    const mine = ++refreshTicket;
+    return transfersList()
+      .then((list) => {
+        if (mine !== refreshTicket) return;
+        // The dispatcher writes a state before it emits it, so a patch
+        // received before this read started is already in the rows; only
+        // later ones need overlaying, and the earlier ones can be forgotten.
+        for (const [id, p] of patches) if (p.ticket <= mine) patches.delete(id);
+        const transfers = patches.size
+          ? list.map((t) => {
+              const p = patches.get(t.id);
+              return p ? { ...t, state: p.state, error: p.error ?? t.error } : t;
+            })
+          : list;
+        set({ transfers });
+      })
+      .catch(() => undefined);
+  },
   applyProgress: (id, bytes, _size, chunks) =>
     set((s) => {
       const now = performance.now();
@@ -114,12 +148,14 @@ export const useUiStore = create<UiState>((set) => ({
         progress: { ...s.progress, [id]: { bytes, at: now, rate, chunks: chunks ?? prev?.chunks } },
       };
     }),
-  patchTransferState: (id, state, error) =>
+  patchTransferState: (id, state, error) => {
+    patches.set(id, { state, error, ticket: refreshTicket });
     set((s) => ({
       transfers: s.transfers.map((t) =>
         t.id === id ? { ...t, state, error: error ?? t.error } : t,
       ),
-    })),
+    }));
+  },
   setQueueOpen: (queueOpen) => set({ queueOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setViewMode: (viewMode) => set({ viewMode }),

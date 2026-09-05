@@ -197,6 +197,18 @@
   color: var(--text-mid);
 }
 
+/* Virtualized row list: the container carries the full height so the
+   scrollbar is honest; each mounted row is pinned to its own offset. */
+.dock__list {
+  position: relative;
+}
+.trow--virtual {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
 /* header row — uppercase letterspaced labels, card bg while sticky */
 .trow--head {
   height: 26px;

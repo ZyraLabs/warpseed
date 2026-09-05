@@ -353,7 +353,8 @@ const App = {
   },
   async TransfersList(): Promise<Transfer[]> {
     await delay();
-    return state.transfers.map((t) => ({ ...t }));
+    // Newest first, as the real store returns rows.
+    return state.transfers.map((t) => ({ ...t })).reverse();
   },
   async PauseTransfer(id: number) {
     const t = state.transfers.find((x) => x.id === id);
@@ -451,6 +452,34 @@ const runtime = {
   OnFileDrop: noop, OnFileDropOff: noop,
   CanResolveFilePaths: () => false, ResolveFilePaths: noop,
 };
+
+// `?queue=N` bulk-queues N extra pending downloads behind the seeded ones —
+// the "whole season folder" case that once pushed the live rows out of the
+// UI's window. Useful for measuring the dock and rails at scale.
+{
+  const n = Number(new URLSearchParams(window.location.search).get("queue") ?? 0);
+  const now = new Date().toISOString();
+  for (let i = 0; i < n && n < 100000; i++) {
+    const name = `episode-${String(i + 1).padStart(3, "0")}-1080p.mkv`;
+    state.transfers.push({
+      id: state.nextId++,
+      siteId: 1,
+      engine: "sftpfast",
+      direction: "download",
+      src: `/home/seedling/downloads/season-pack/${name}`,
+      dst: `D:\\Media\\season-pack\\${name}`,
+      size: 700 * 1024 * 1024 + i * 1024,
+      state: "pending",
+      priority: 0,
+      bytesDone: 0,
+      attempt: 0,
+      nextRetryAt: null,
+      error: null,
+      createdAt: now,
+      updatedAt: now,
+    });
+  }
+}
 
 // --- install ---------------------------------------------------------------
 

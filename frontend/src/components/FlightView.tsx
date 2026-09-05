@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useEffect, useRef, useState } from "react";
 import {
 } from "../ipc";
 import { formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
+import { nextUp } from "../lib/claimOrder";
 import { useUiStore } from "../store";
 import { Warning } from "./Icon";
 import "../flight.css";
@@ -16,6 +17,9 @@ import "../flight.css";
 // the transfer stalled and must not keep contributing its last rate.
 const STALE_MS = 2500;
 const MAX_ACTIVE_LANES = 6;
+/** The rail is a glance at what is next, not the queue itself; a 2000-row
+    rail re-rendered on every progress tick would stall the whole view. */
+const RAIL_MAX = 60;
 const MAX_FAILED_LANES = 3;
 const TIMELINE_SAMPLES = 120; // one per second — two minutes of history
 
@@ -203,6 +207,9 @@ export default function FlightView() {
   const active = live.filter((t) => t.state === "active");
   const failed = live.filter((t) => t.state === "failed");
   const queued = live.filter((t) => t.state === "pending" || t.state === "dispatched");
+  // The rail shows claim order so its top row is the file that really goes
+  // next; it depends only on the rows, not on per-tick progress.
+  const railRows = useMemo(() => nextUp(transfers).slice(0, RAIL_MAX), [transfers]);
   const done = live.filter((t) => t.state === "completed");
   const aggRate = active.reduce((s, t) => s + t.rate, 0);
   const connCount = active.reduce((s, t) => s + t.lanes, 0);
@@ -314,12 +321,19 @@ export default function FlightView() {
             {queued.length === 0 ? (
               <div className="flight__rail-empty">Nothing waiting — mark files and press F5</div>
             ) : (
-              queued.map((t) => (
-                <div key={t.id} className="qrow" title={`${t.src} → ${t.dst}`}>
-                  <span className="qrow__name">{baseName(t.src)}</span>
-                  <span className="qrow__size">{t.size > 0 ? formatSize(t.size) : "—"}</span>
-                </div>
-              ))
+              <>
+                {railRows.map((t) => (
+                  <div key={t.id} className="qrow" title={`${t.src} → ${t.dst}`}>
+                    <span className="qrow__name">{baseName(t.src)}</span>
+                    <span className="qrow__size">{t.size > 0 ? formatSize(t.size) : "—"}</span>
+                  </div>
+                ))}
+                {queued.length > RAIL_MAX && (
+                  <div className="flight__rail-empty">
+                    and {queued.length - RAIL_MAX} more in the queue dock
+                  </div>
+                )}
+              </>
             )}
           </div>
           <div className={`flight__rail-foot ${queued.length > 0 ? "flight__rail-foot--armed" : ""}`}>

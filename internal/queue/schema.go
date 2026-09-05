@@ -135,4 +135,13 @@ var migrations = []string{
 	ALTER TABLE transfers ADD COLUMN started_at TEXT;
 	ALTER TABLE transfers ADD COLUMN start_bytes INTEGER NOT NULL DEFAULT 0;
 	`,
+
+	// 009 — the queue UI's list reads the newest finished/failed rows by id
+	// within one state. idx_transfers_state orders by priority between
+	// state and id, so that read temp-sorted every completed row a user had
+	// ever accumulated, on the single connection the dispatcher's
+	// checkpoint writes queue behind.
+	`
+	CREATE INDEX idx_transfers_state_id ON transfers(state, id);
+	`,
 }

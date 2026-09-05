@@ -189,6 +189,12 @@ still there and resume from the exact byte they reached.
 show a plain-language reason and a **retry** button. Completed rows stay
 for the session so you can audit them; **Clear done** purges them.
 
+The dock always shows everything in flight, plus up to 2,000 waiting rows
+(the ones next in line), the newest 500 failed rows and the newest 200
+finished rows. Queue a whole season folder and every row is there; the
+queue itself has no limit, and rows beyond those windows are still worked
+through — they simply appear as earlier ones finish.
+
 ### Byte-level resume
 
 Every transfer keeps per-chunk checkpoints. Pause, error, idle timeout,

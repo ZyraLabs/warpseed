@@ -264,7 +264,7 @@ func (d *Dispatcher) pump(ctx context.Context) {
 		if serr := d.store.MarkTransferStarted(t.ID, now, t.BytesDone); serr != nil {
 			log.Printf("dispatch: mark started %d: %v", t.ID, serr)
 		}
-		d.emitState(t.ID, "active", "")
+		d.emitStateSrc(t.ID, t.Src, "active", "")
 		d.running.Add(1)
 		go d.runTransfer(tctx, t, streams)
 	}
@@ -624,7 +624,7 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 				if serr := d.store.ScheduleRetry(t.ID, next, &msg); serr != nil {
 					log.Printf("dispatch: restart %d: %v", t.ID, serr)
 				}
-				d.emitState(t.ID, "pending", msg)
+				d.emitStateSrc(t.ID, t.Src, "pending", msg)
 				d.sink.Emit("transfer:progress", map[string]any{"id": t.ID, "bytes": int64(0), "size": t.Size})
 				return // deferred release/Wake still run
 			}
@@ -648,7 +648,7 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 			log.Printf("dispatch: complete %d: %v", t.ID, serr)
 		}
 		d.sink.Emit("transfer:progress", map[string]any{"id": t.ID, "bytes": final, "size": t.Size})
-		d.emitState(t.ID, "completed", "")
+		d.emitStateSrc(t.ID, t.Src, "completed", "")
 		// A finished transfer changes a directory someone may be looking at.
 		d.sink.Emit("fs:changed", map[string]any{
 			"source": map[bool]string{true: "remote", false: "local"}[t.Direction == "upload"],
@@ -748,7 +748,7 @@ func (d *Dispatcher) finishWithError(ctx context.Context, t queue.Transfer, err 
 		// the .wspart stays on disk so resume continues at the same offset.
 		if cur, gerr := d.store.TransferByID(t.ID); gerr == nil &&
 			(cur.State == "paused" || cur.State == "cancelled") {
-			d.emitState(t.ID, cur.State, "")
+			d.emitStateSrc(t.ID, t.Src, cur.State, "")
 			return
 		}
 	}
@@ -762,13 +762,13 @@ func (d *Dispatcher) finishWithError(ctx context.Context, t queue.Transfer, err 
 		if serr := d.store.ScheduleRetry(t.ID, next, &msg); serr != nil {
 			log.Printf("dispatch: retry %d: %v", t.ID, serr)
 		}
-		d.emitState(t.ID, "pending", msg)
+		d.emitStateSrc(t.ID, t.Src, "pending", msg)
 		return
 	}
 	if serr := d.store.SetTransferState(t.ID, "failed", &msg); serr != nil {
 		log.Printf("dispatch: fail %d: %v", t.ID, serr)
 	}
-	d.emitState(t.ID, "failed", msg)
+	d.emitStateSrc(t.ID, t.Src, "failed", msg)
 }
 
 // Pause stops an active transfer keeping its .wspart (byte-resume) or parks
@@ -816,7 +816,18 @@ func (d *Dispatcher) cancelIfRunning(id int64) {
 }
 
 func (d *Dispatcher) emitState(id int64, state, errMsg string) {
+	d.emitStateSrc(id, "", state, errMsg)
+}
+
+// emitStateSrc is emitState with the source path in the payload. The UI
+// names the transfer from its own row list, but a row claimed straight
+// after enqueue can go active before that list has caught up; the path
+// lets the session log still say which file, instead of "transfer #412".
+func (d *Dispatcher) emitStateSrc(id int64, src, state, errMsg string) {
 	payload := map[string]any{"id": id, "state": state}
+	if src != "" {
+		payload["src"] = src
+	}
 	if errMsg != "" {
 		payload["error"] = errMsg
 	}

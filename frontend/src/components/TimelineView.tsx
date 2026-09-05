@@ -1,7 +1,9 @@
+import { useMemo } from "react";
 import { resumeTransfer, cancelTransfer, type Transfer } from "../ipc";
 import { describeTransferError, formatDuration, formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
-import { useUiStore } from "../store";
+import { nextUp } from "../lib/claimOrder";
+import { useUiStore, type SessionEvent } from "../store";
 import { Check, Close, Play, Warning } from "./Icon";
 import "../timeline.css";
 
@@ -57,14 +59,15 @@ function dayLabel(at: number, now: number): string {
 
 /** Activity view: the session as a chronological story — live work pinned on
     top, then finished/failed transfers and session events interleaved. */
-export default function TimelineView() {
-  const transfers = useUiStore((s) => s.transfers);
-  const progress = useUiStore((s) => s.progress);
-  const sessionLog = useUiStore((s) => s.sessionLog);
+/** Most entries the timeline draws; older ones are summarized in one line. */
+const ENTRY_CAP = 250;
 
+/** Row- and log-derived timeline data; memoized by the view. */
+function derive(transfers: Transfer[], sessionLog: SessionEvent[]) {
   const now = Date.now();
-  const active = transfers.filter((t) => t.state === "active");
-  const queued = transfers.filter((t) => t.state === "pending" || t.state === "dispatched");
+  // The list is newest first; "next" is the row the dispatcher claims first.
+  const queued = nextUp(transfers, now);
+  const next = queued[0] ?? null;
 
   // Historical entries: settled queue rows + captured session events. The
   // queue rows survive restarts (SQLite), the session events do not — so a
@@ -107,6 +110,12 @@ export default function TimelineView() {
     entries.push({ key: `s${i}-${e.at}`, at: e.at, kind: e.kind, text: e.text });
   }
   entries.sort((a, b) => b.at - a.at);
+  // This view is not virtualized and re-renders on every progress tick;
+  // the list can hold 500 failed rows plus 200 finished plus the session
+  // log, and drawing them all per tick would stall exactly the night the
+  // user opens Activity to see what went wrong.
+  const hidden = Math.max(0, entries.length - ENTRY_CAP);
+  if (hidden > 0) entries.length = ENTRY_CAP;
 
   // Today's totals. Averaged over time SPENT TRANSFERRING, not wall-clock:
   // the gap between two transfers is not slowness, and dividing by it would
@@ -128,6 +137,21 @@ export default function TimelineView() {
     doneMs += r.ms;
     if (r.rate > best) best = r.rate;
   }
+  return { queued, next, entries, hidden, doneCount, failCount, doneMs, doneBytes, best };
+}
+
+
+export default function TimelineView() {
+  const transfers = useUiStore((s) => s.transfers);
+  const progress = useUiStore((s) => s.progress);
+  const sessionLog = useUiStore((s) => s.sessionLog);
+
+  const now = Date.now();
+  const active = transfers.filter((t) => t.state === "active");
+  // Everything below depends only on the rows and the log, not on the
+  // per-tick progress map this view also subscribes to.
+  const { queued, next, entries, hidden, doneCount, failCount, doneMs, doneBytes, best } =
+    useMemo(() => derive(transfers, sessionLog), [transfers, sessionLog]);
   const liveRate = active.reduce((n, t) => n + (progress[t.id]?.rate ?? 0), 0);
   const avg = doneMs > 0 ? doneBytes / (doneMs / 1000) : 0;
   const showSummary = doneCount > 0 || failCount > 0 || active.length > 0;
@@ -207,7 +231,7 @@ export default function TimelineView() {
             <span className="tl__time" />
             <span className="tl__dot" />
             <div className="tl__line">
-              {queued.length} queued · next: {baseName(queued[0].src)}
+              {queued.length} queued · next: {baseName((next ?? queued[0]).src)}
             </div>
           </div>
         )}
@@ -249,6 +273,13 @@ export default function TimelineView() {
           );
         })}
 
+        {hidden > 0 && (
+          <div className="tl__row">
+            <span className="tl__time" />
+            <span className="tl__dot" />
+            <div className="tl__line">{hidden} older entries not shown</div>
+          </div>
+        )}
         {entries.length === 0 && active.length === 0 && queued.length === 0 && (
           <div className="tl__empty">Nothing yet — queue a transfer and the story starts here.</div>
         )}

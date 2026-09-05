@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ComponentType } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   cancelTransfer,
   clearDoneTransfers,
@@ -8,7 +9,7 @@ import {
   pauseTransfer,
   resumeTransfer,
   setSetting,
-  transfersList,
+  type Transfer,
   type TransferProgress,
   type TransferState,
 } from "../ipc";
@@ -60,6 +61,14 @@ const QUEUE_COLUMNS: ColumnSpec[] = [
   { id: "pct", label: "%", min: 40, initial: 52 },
 ];
 
+/** Trailing window for coalescing queue:changed bursts into one refetch. */
+const REFRESH_COALESCE_MS = 120;
+
+/** Row heights from queue.css; measured after first paint, these are only
+    the first-render estimates. */
+const ROW_H = 34;
+const ROW_H_ERROR = 54;
+
 /** "added" is queue order (newest first, as the store returns rows). */
 type QSortKey = "added" | "state" | "name" | "dest" | "size" | "rate" | "pct";
 interface QSort {
@@ -74,6 +83,14 @@ const COL_SORT: Record<string, QSortKey> = {
   rate: "rate",
   pct: "pct",
 };
+
+/** One collator for the whole dock: localeCompare with an options object
+    builds a collator per comparison, which at 2000 rows is tens of
+    milliseconds per sort. */
+const collator = new Intl.Collator(undefined, { sensitivity: "base" });
+
+/** Rows in flight pin above everything else in the default order. */
+const liveRank = (t: Transfer): number => (t.state === "active" || t.state === "dispatched" ? 0 : 1);
 
 /** Ascending state sort surfaces what needs attention: errors first, then
     running work, with finished rows at the bottom. */
@@ -94,7 +111,7 @@ export default function QueueDock() {
   const progress = useUiStore((s) => s.progress);
   const open = useUiStore((s) => s.queueOpen);
   const setOpen = useUiStore((s) => s.setQueueOpen);
-  const setTransfers = useUiStore((s) => s.setTransfers);
+  const refreshTransfers = useUiStore((s) => s.refreshTransfers);
   const applyProgress = useUiStore((s) => s.applyProgress);
   const patchTransferState = useUiStore((s) => s.patchTransferState);
   const sites = useUiStore((s) => s.sites);
@@ -135,8 +152,26 @@ export default function QueueDock() {
   };
 
   useEffect(() => {
-    const refresh = () => void transfersList().then(setTransfers).catch(() => undefined);
-    refresh();
+    // queue:changed fires once per state change, so a run of small files
+    // completing at 8 a second would refetch the whole list 8 times a
+    // second. Coalesce bursts into one trailing fetch; the store drops any
+    // response that a newer read or a state patch has overtaken.
+    let timer: number | null = null;
+    const fetchNow = () => {
+      if (timer !== null) {
+        window.clearTimeout(timer);
+        timer = null;
+      }
+      void refreshTransfers();
+    };
+    const refresh = () => {
+      if (timer !== null) return; // a fetch is already scheduled; it will see this change
+      timer = window.setTimeout(() => {
+        timer = null;
+        fetchNow();
+      }, REFRESH_COALESCE_MS);
+    };
+    fetchNow();
     // Session-log capture lives here because the dock is always mounted.
     // Change detection uses local snapshots: this handler writes the new
     // state into the store itself, so comparing against the store would
@@ -157,7 +192,12 @@ export default function QueueDock() {
       const prev = lastState.get(s.id);
       lastState.set(s.id, s.state);
       const t = useUiStore.getState().transfers.find((x) => x.id === s.id);
-      const name = t ? baseName(t.src) : `transfer #${s.id}`;
+      // A row claimed straight after enqueue goes active before the
+      // coalesced refetch has landed it: name it from the payload and pull
+      // the list now rather than on the timer. (The patch below is
+      // overlaid on that read when it lands, so it is not wasted.)
+      if (!t) fetchNow();
+      const name = t ? baseName(t.src) : s.src ? baseName(s.src) : `transfer #${s.id}`;
       if (s.state === "completed") {
         push("ok", `${name} completed${t && t.size > 0 ? ` · ${formatSize(t.size)}` : ""}`);
       } else if (s.state === "failed") {
@@ -170,13 +210,41 @@ export default function QueueDock() {
       if (s.state === "active") setStreak(true); // warp-line streak (§8.2)
     });
     return () => {
+      if (timer !== null) window.clearTimeout(timer);
       offChanged();
       offProgress();
       offState();
     };
-  }, [setTransfers, applyProgress, patchTransferState]);
+  }, [refreshTransfers, applyProgress, patchTransferState]);
 
-  const live = transfers.map((t) => {
+  // Every progress tick re-renders the dock, so the sort is split: orders
+  // that depend only on the rows (name, destination, size, state, and the
+  // default) are memoized against the row list, and only the two orders
+  // that read live progress (speed, %) re-sort per tick.
+  const ordered = useMemo(() => {
+    const dir = sort.desc ? -1 : 1;
+    const tie = (a: Transfer, b: Transfer) => b.id - a.id; // queue order regardless of direction
+    switch (sort.key) {
+      case "name":
+        return [...transfers].sort(
+          (a, b) => collator.compare(baseName(a.src), baseName(b.src)) * dir || tie(a, b),
+        );
+      case "dest":
+        return [...transfers].sort((a, b) => collator.compare(a.dst, b.dst) * dir || tie(a, b));
+      case "size":
+        return [...transfers].sort((a, b) => (a.size - b.size) * dir || tie(a, b));
+      case "state":
+        return [...transfers].sort(
+          (a, b) => ((STATE_RANK[a.state] ?? 9) - (STATE_RANK[b.state] ?? 9)) * dir || tie(a, b),
+        );
+      default:
+        // Queue order, newest first — with what is in flight pinned to the
+        // top (ux-spec §4) so a 2000-row backlog never buries it.
+        return [...transfers].sort((a, b) => liveRank(a) - liveRank(b) || tie(a, b));
+    }
+  }, [transfers, sort]);
+
+  const live = ordered.map((t) => {
     const p = progress[t.id];
     const bytes = p && p.bytes > t.bytesDone ? p.bytes : t.bytesDone;
     // Lanes belong to a running multi-connection transfer; once it settles,
@@ -190,44 +258,73 @@ export default function QueueDock() {
     };
   });
 
-  const rows = [...live];
-  if (sort.key !== "added") {
+  let rows = live;
+  if (sort.key === "rate" || sort.key === "pct") {
     const dir = sort.desc ? -1 : 1;
     const pctOf = (t: (typeof live)[number]) => (t.size > 0 ? t.bytes / t.size : 0);
-    rows.sort((a, b) => {
-      let d = 0;
-      switch (sort.key) {
-        case "name":
-          d = baseName(a.src).localeCompare(baseName(b.src), undefined, { sensitivity: "base" });
-          break;
-        case "dest":
-          d = a.dst.localeCompare(b.dst, undefined, { sensitivity: "base" });
-          break;
-        case "size":
-          d = a.size - b.size;
-          break;
-        case "rate":
-          d = a.rate - b.rate;
-          break;
-        case "pct":
-          d = pctOf(a) - pctOf(b);
-          break;
-        case "state":
-          d = (STATE_RANK[a.state] ?? 9) - (STATE_RANK[b.state] ?? 9);
-          break;
-      }
+    rows = [...live].sort((a, b) => {
+      const d = sort.key === "rate" ? a.rate - b.rate : pctOf(a) - pctOf(b);
       if (d === 0) return b.id - a.id; // ties keep queue order regardless of direction
       return d * dir;
     });
   }
 
+  // The body is the scroll container; the toolbar and column headers sit
+  // sticky inside it above the rows, so the row list starts partway down
+  // the scroll content. Only the rows in view are mounted: the window can
+  // hold up to 2000 unfinished rows and every progress tick re-renders the
+  // dock, which is fine for a dozen rows and a stall for two thousand.
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const [listTop, setListTop] = useState(0);
+  const hasRows = rows.length > 0;
+  useLayoutEffect(() => {
+    // The list only exists while there are rows: a dock opened empty and
+    // filled later must measure again when the list mounts.
+    if (!open || !hasRows || !bodyRef.current || !listRef.current) return;
+    // offsetTop is layout position, unaffected by the body's scroll.
+    setListTop(listRef.current.offsetTop - bodyRef.current.offsetTop);
+  }, [open, hasRows]);
+  // Stable callbacks: the virtualizer rebuilds its whole measurement table
+  // whenever getItemKey/estimateSize change identity, which per progress
+  // tick would be the O(rows) work virtualizing was meant to remove.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const getItemKey = useCallback((i: number) => rowsRef.current[i].id, []);
+  const estimateSize = useCallback(
+    (i: number) => {
+      const t = rowsRef.current[i];
+      return t.state === "failed" && t.error ? ROW_H_ERROR : ROW_H;
+    },
+    [],
+  );
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => bodyRef.current,
+    getItemKey,
+    estimateSize,
+    overscan: 8,
+    scrollMargin: listTop,
+  });
+
+  // Strip figures that depend only on the rows are memoized against them;
+  // only the rate and the done-bytes total read live progress per tick.
+  const counts = useMemo(() => {
+    let queued = 0;
+    let failed = 0;
+    let totalBytes = 0;
+    for (const t of transfers) {
+      if (t.state === "pending" || t.state === "dispatched") queued++;
+      else if (t.state === "failed") failed++;
+      if (t.state !== "completed" && t.state !== "cancelled") totalBytes += Math.max(t.size, 0);
+    }
+    return { queued, failed, totalBytes };
+  }, [transfers]);
   const active = live.filter((t) => t.state === "active");
-  const queued = live.filter((t) => t.state === "pending" || t.state === "dispatched");
-  const failed = live.filter((t) => t.state === "failed");
   const aggRate = active.reduce((s, t) => s + t.rate, 0);
-  const incomplete = live.filter((t) => !["completed", "cancelled"].includes(t.state));
-  const totalBytes = incomplete.reduce((s, t) => s + Math.max(t.size, 0), 0);
-  const doneBytes = incomplete.reduce((s, t) => s + t.bytes, 0);
+  let doneBytes = 0;
+  for (const t of live) if (t.state !== "completed" && t.state !== "cancelled") doneBytes += t.bytes;
+  const { totalBytes } = counts;
 
   return (
     <div
@@ -243,12 +340,12 @@ export default function QueueDock() {
         </span>
         {aggRate > 0 && <span className="agg-rate">{formatSize(aggRate)}/s</span>}
         <span>
-          {active.length} active · {queued.length} queued
+          {active.length} active · {counts.queued} queued
         </span>
-        {failed.length > 0 && (
+        {counts.failed > 0 && (
           <span className="chip-failed">
             <Warning size={11} />
-            {failed.length} failed
+            {counts.failed} failed
           </span>
         )}
         <span className="grow" />
@@ -257,7 +354,7 @@ export default function QueueDock() {
       </button>
 
       {open && (
-        <div className="dock__body" style={colStyle}>
+        <div className="dock__body" style={colStyle} ref={bodyRef}>
           <div className="dock__header">
             <span className="grow" />
             <button onClick={reset} title="Restore default column widths">
@@ -326,14 +423,26 @@ export default function QueueDock() {
           {rows.length === 0 ? (
             <div className="dock__empty">Nothing queued — mark files and press F5</div>
           ) : (
-            rows.map((t) => {
+            <div
+              className="dock__list"
+              ref={listRef}
+              style={{ height: virtualizer.getTotalSize() }}
+            >
+            {virtualizer.getVirtualItems().map((vi) => {
+              const t = rows[vi.index];
               const pct = t.size > 0 ? Math.min(t.bytes / t.size, 1) : 0;
               const siteName = sites.find((s) => s.id === t.siteId)?.name ?? `site ${t.siteId}`;
               const hasError = t.state === "failed" && t.error;
               const lanes = t.chunks && t.chunks.length > 1 ? t.chunks : null;
               const StateIcon = STATE_ICON[t.state] ?? ChevronRight;
               return (
-                <div key={t.id} className={`trow trow--${t.state} ${hasError ? "trow--witherror" : ""}`}>
+                <div
+                  key={t.id}
+                  data-index={vi.index}
+                  ref={virtualizer.measureElement}
+                  className={`trow trow--virtual trow--${t.state} ${hasError ? "trow--witherror" : ""}`}
+                  style={{ transform: `translateY(${vi.start - listTop}px)` }}
+                >
                   <span className="trow__icon">
                     <StateIcon size={13} />
                   </span>
@@ -391,7 +500,8 @@ export default function QueueDock() {
                   {hasError && <span className="trow__error">{describeError(t.error ?? "")}</span>}
                 </div>
               );
-            })
+            })}
+            </div>
           )}
         </div>
       )}

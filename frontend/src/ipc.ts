@@ -239,6 +239,9 @@ export interface TransferState {
   id: number;
   state: string;
   error?: string;
+  /** Source path, when the dispatcher had the row in hand — names a
+      transfer the UI list has not caught up with yet. */
+  src?: string;
 }
 
 /** Connect a site's browse session and resolve its opening directory: the

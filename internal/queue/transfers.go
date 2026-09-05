@@ -106,13 +106,81 @@ func (s *Store) PendingTransfers(now string) ([]Transfer, error) {
 	return collectTransfers(rows)
 }
 
-// Transfers returns the newest rows for the queue UI.
+// Caps on how many rows of each kind one Transfers call returns. The UI
+// refetches the whole list on every queue:changed, which fires for each
+// completion, so an unbounded list would turn a long run of small files
+// into a JSON storm over the bridge. Rows in flight (active, dispatched,
+// paused) are never capped — their number is bounded by the concurrency
+// settings and the user's own pauses. Pending rows are capped in claim
+// order so the ones shown are the ones next in line; failed and finished
+// rows are capped newest first. Each kind has its own window so a night of
+// mass failures cannot evict the pending backlog from view, and vice versa.
+const (
+	maxPendingRows  = 2000
+	maxFailedRows   = 500
+	defaultFinished = 200 // completed + cancelled together
+)
+
+// transfersWindowSQL is one subquery per state so every arm walks an index
+// in its output order and stops at its LIMIT: in-flight states and pending
+// use idx_transfers_state (state, priority DESC, id) in claim order, the
+// newest-first arms use idx_transfers_state_id. Nothing here sorts more
+// than the capped rows, however many the table has accumulated. The test
+// TestTransfersWindowUsesIndexes EXPLAINs this exact string.
+//
+// Parameters: pending cap, failed cap, finished cap (three times).
+const transfersWindowSQL = `SELECT ` + transferCols + ` FROM (
+   SELECT ` + transferCols + ` FROM transfers WHERE state='active'
+    ORDER BY priority DESC, id ASC)
+ UNION ALL
+ SELECT ` + transferCols + ` FROM (
+   SELECT ` + transferCols + ` FROM transfers WHERE state='dispatched'
+    ORDER BY priority DESC, id ASC)
+ UNION ALL
+ SELECT ` + transferCols + ` FROM (
+   SELECT ` + transferCols + ` FROM transfers WHERE state='paused'
+    ORDER BY priority DESC, id ASC)
+ UNION ALL
+ SELECT ` + transferCols + ` FROM (
+   SELECT ` + transferCols + ` FROM transfers WHERE state='pending'
+    ORDER BY priority DESC, id ASC LIMIT ?)
+ UNION ALL
+ SELECT ` + transferCols + ` FROM (
+   SELECT ` + transferCols + ` FROM transfers WHERE state='failed'
+    ORDER BY id DESC LIMIT ?)
+ UNION ALL
+ SELECT ` + transferCols + ` FROM (
+   SELECT * FROM (
+     SELECT ` + transferCols + ` FROM transfers WHERE state='completed'
+      ORDER BY id DESC LIMIT ?)
+   UNION ALL
+   SELECT * FROM (
+     SELECT ` + transferCols + ` FROM transfers WHERE state='cancelled'
+      ORDER BY id DESC LIMIT ?)
+   ORDER BY id DESC LIMIT ?)
+ ORDER BY id DESC`
+
+// Transfers returns the rows the queue UI shows: every row in flight, the
+// next `maxPendingRows` pending rows in claim order, the newest
+// maxFailedRows failed rows, and the newest `limit` finished rows — all
+// ordered newest first.
+//
+// It used to be a plain "newest 200 rows". The dispatcher claims oldest
+// first, so once more than 200 rows were queued the active transfers fell
+// outside the window and every view derived from it (dock, flight,
+// activity, mini pill) showed nothing in flight while the bytes kept
+// moving.
 func (s *Store) Transfers(limit int) ([]Transfer, error) {
 	if limit <= 0 {
-		limit = 200
+		limit = defaultFinished
 	}
-	rows, err := s.db.Query(
-		`SELECT `+transferCols+` FROM transfers ORDER BY id DESC LIMIT ?`, limit)
+	return s.transfersWindow(maxPendingRows, maxFailedRows, limit)
+}
+
+// transfersWindow is Transfers with the caps exposed for tests.
+func (s *Store) transfersWindow(pendingCap, failedCap, finishedCap int) ([]Transfer, error) {
+	rows, err := s.db.Query(transfersWindowSQL,
+		pendingCap, failedCap, finishedCap, finishedCap, finishedCap)
 	if err != nil {
 		return nil, fmt.Errorf("list transfers: %w", err)
 	}
