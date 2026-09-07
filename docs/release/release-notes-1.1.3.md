@@ -47,6 +47,14 @@ a hard drive unplugged mid-run.
   byte it reached; Clear removes the rows and the part-downloaded data with
   them, so nothing is left behind on disk.
 
+## Also included, if you are coming from 1.1.1
+
+1.1.2 was never published as a download, so this release carries its fixes
+too — the big one being that **queues over 200 rows stopped showing what was
+in flight**: the dock read "0 active", Flight had no lanes and Activity was
+empty while the transfers carried on regardless. Full detail in
+`docs/release/release-notes-1.1.2.md`.
+
 ## Notes
 
 - Nothing about your saved settings changes — the two Transfers numbers mean
