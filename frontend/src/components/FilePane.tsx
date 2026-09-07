@@ -117,6 +117,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
   const isActive = useUiStore((s) => s.activePane === side);
   const setActivePane = useUiStore((s) => s.setActivePane);
   const setPane = useUiStore((s) => s.setPane);
+  const askConfirm = useUiStore((s) => s.askConfirm);
   const sites = useUiStore((s) => s.sites);
   const connStates = useUiStore((s) => s.connStates);
   const setQuickConnect = useUiStore((s) => s.setQuickConnect);
@@ -524,13 +525,14 @@ export default function FilePane({ side }: { side: PaneSide }) {
     (items: FsEntry[]) => {
       if (items.length === 0) return;
       const names = items.length === 1 ? `“${items[0].name}”` : `${items.length} items`;
-      setPrompt({
+      askConfirm({
         title: `Delete ${names}?`,
         body: items.some((e) => e.isDir)
           ? "Folders are deleted with everything inside them. This cannot be undone."
           : "This cannot be undone.",
         confirmLabel: "Delete",
         danger: true,
+        suppressKey: "delete-files",
         onConfirm: () => {
           void deleteEntries(
             source,
@@ -546,7 +548,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
         },
       });
     },
-    [source, joinHere, nav, path],
+    [source, joinHere, nav, path, askConfirm],
   );
 
   const doRename = useCallback(

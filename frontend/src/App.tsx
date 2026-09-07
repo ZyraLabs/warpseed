@@ -5,6 +5,7 @@ import DeckView from "./components/DeckView";
 import MiniView from "./components/MiniView";
 import TimelineView from "./components/TimelineView";
 import FlightView from "./components/FlightView";
+import ConfirmDialog from "./components/ConfirmDialog";
 import HostKeyDialog from "./components/HostKeyDialog";
 import { Heart, Search, Shrink, Sliders, Slipstream } from "./components/Icon";
 import QueueDock from "./components/QueueDock";
@@ -309,6 +310,7 @@ export default function App() {
       <QuickConnect />
       <SettingsDialog />
       <HostKeyDialog />
+      <ConfirmDialog />
       <Toasts />
     </div>
   );

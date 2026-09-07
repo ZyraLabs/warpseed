@@ -182,8 +182,8 @@ collapsed it shows aggregate speed and counts; click it to expand.
 Each row shows filename, route, progress, speed and ETA, and has
 **pause / resume** and **cancel** buttons. Pause keeps everything so the
 transfer continues from the same byte; cancel throws the part-transferred
-data away, on your machine and on the server. Items from different sites
-coexist. The queue is persisted to disk, so closing warpseed (or a crash,
+data away, on your machine and on the server, and asks before it does. Items
+from different sites coexist. The queue is persisted to disk, so closing warpseed (or a crash,
 or a reboot) loses nothing — on next launch, unfinished transfers are
 still there and resume from the exact byte they reached.
 
@@ -209,6 +209,17 @@ The dock always shows everything in flight, plus up to 2,000 waiting rows
 finished rows. Queue a whole season folder and every row is there; the
 queue itself has no limit, and rows beyond those windows are still worked
 through — they simply appear as earlier ones finish.
+
+### Before anything is deleted
+
+Cancelling a transfer, clearing cancelled transfers from the queue, deleting
+files, and deleting a saved site all ask first, and say what is about to go.
+A transfer that has moved no bytes is cancelled without a prompt — there is
+nothing to lose.
+
+Each of those warnings can be switched off for the rest of the session with
+**Don't ask again until warpseed restarts**. It silences only that one kind
+of warning, and every launch starts asking again.
 
 ### Byte-level resume
 

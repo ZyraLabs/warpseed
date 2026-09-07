@@ -452,6 +452,26 @@
   margin: 0;
   accent-color: var(--accent);
 }
+/* "Don't ask again" on a destructive confirm. Deliberately quiet and below
+   the message: silencing a warning should be a considered click, not the
+   thing the eye lands on first. */
+.prompt__suppress {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0 0;
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none;
+}
+.prompt__suppress input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .set-note {
   font-size: var(--text-2xs);
   color: var(--text-faint);

@@ -3,6 +3,7 @@
    queue:changed; progress overlaid from transfer:progress events). */
 import { create } from "zustand";
 import { transfersList, type PaneSource, type Site, type Transfer } from "./ipc";
+import type { PromptSpec } from "./components/PromptDialog";
 
 interface ProgressSample {
   bytes: number;
@@ -54,6 +55,7 @@ interface UiState {
   queueOpen: boolean;
   settingsOpen: boolean;
   viewMode: "browse" | "flight" | "deck" | "timeline";
+  confirm: PromptSpec | null;
   miniMode: boolean;
   sessionLog: SessionEvent[];
 
@@ -72,10 +74,18 @@ interface UiState {
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  /** Raise a confirmation. Destructive actions go through this rather than
+      calling their IPC directly; see askConfirm's note. */
+  askConfirm: (spec: PromptSpec) => void;
+  closeConfirm: () => void;
   setViewMode: (mode: "browse" | "flight" | "deck" | "timeline") => void;
   setMiniMode: (on: boolean) => void;
   pushSessionEvent: (kind: SessionEvent["kind"], text: string) => void;
 }
+
+// Warnings the user has silenced for this run. Module scope, not persisted:
+// see askConfirm.
+const suppressed = new Set<string>();
 
 export const useUiStore = create<UiState>((set) => ({
   panes: [
@@ -92,6 +102,7 @@ export const useUiStore = create<UiState>((set) => ({
   progress: {},
   queueOpen: false,
   settingsOpen: false,
+  confirm: null,
   viewMode: "browse",
   miniMode: false,
   sessionLog: [],
@@ -158,6 +169,29 @@ export const useUiStore = create<UiState>((set) => ({
   },
   setQueueOpen: (queueOpen) => set({ queueOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+
+  // Every destructive action asks first, from one place, so the wording and
+  // the escape hatch stay consistent and no new delete button can quietly
+  // ship without one. A suppressKey lets the user silence that ONE kind of
+  // warning for the rest of the run — agreeing to skip the file-delete
+  // prompt says nothing about cancelling a transfer. Suppression lives in
+  // memory on purpose: a relaunch asks again, because a habit formed during
+  // one session should not follow someone into the next.
+  askConfirm: (spec) => {
+    if (spec.suppressKey && suppressed.has(spec.suppressKey)) {
+      spec.onConfirm("");
+      return;
+    }
+    set({
+      confirm: {
+        ...spec,
+        onSuppress: (on) => {
+          if (on && spec.suppressKey) suppressed.add(spec.suppressKey);
+        },
+      },
+    });
+  },
+  closeConfirm: () => set({ confirm: null }),
   setViewMode: (viewMode) => set({ viewMode }),
   setMiniMode: (miniMode) => set({ miniMode }),
   pushSessionEvent: (kind, text) =>

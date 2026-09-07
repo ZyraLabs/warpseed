@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import {
-  cancelTransfer,
   diskSpace,
   localHome,
   resumeTransfer,
@@ -9,6 +8,7 @@ import {
 import { describeTransferError, formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
 import { nextUp } from "../lib/claimOrder";
+import { confirmCancel } from "../lib/confirmCancel";
 import { useUiStore } from "../store";
 import { Check, ChevronRight, Play, Warning } from "./Icon";
 import "../deck.css";
@@ -292,7 +292,7 @@ export default function DeckView() {
                   <button className="btn btn--primary" onClick={() => void resumeTransfer(t.id)}>
                     <Play size={11} /> Retry now
                   </button>
-                  <button className="btn" onClick={() => void cancelTransfer(t.id)}>
+                  <button className="btn" onClick={() => confirmCancel(t.id)}>
                     Skip
                   </button>
                 </span>

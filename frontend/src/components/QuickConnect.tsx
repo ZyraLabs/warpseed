@@ -17,6 +17,7 @@ const EMPTY = { name: "", host: "", port: 22, username: "", password: "" };
 export default function QuickConnect() {
   const { open, side } = useUiStore((s) => s.quickConnect);
   const setQuickConnect = useUiStore((s) => s.setQuickConnect);
+  const askConfirm = useUiStore((s) => s.askConfirm);
   const setPane = useUiStore((s) => s.setPane);
   const siteList = useUiStore((s) => s.sites);
   const setSites = useUiStore((s) => s.setSites);
@@ -76,16 +77,30 @@ export default function QuickConnect() {
     }
   };
 
-  const removeSite = async (e: React.MouseEvent, s: Site) => {
+  const removeSite = (e: React.MouseEvent, s: Site) => {
     e.stopPropagation();
-    try {
-      await deleteSite(s.id);
-      // SQLite recycles rowids, so this site's jump list must go with it.
-      forgetSource(s.id);
-      setSites(await fetchSites());
-    } catch (err) {
-      setError(String(err));
-    }
+    // A saved site carries its password, its pinned host key and its
+    // bookmarks, and none of it comes back. One stray click on a row's X
+    // used to be enough.
+    askConfirm({
+      title: `Delete ${s.name}?`,
+      body: "Its saved password, bookmarks and pinned host key go with it. Queued transfers for this site are not affected.",
+      confirmLabel: "Delete site",
+      danger: true,
+      suppressKey: "delete-site",
+      onConfirm: () => {
+        void (async () => {
+          try {
+            await deleteSite(s.id);
+            // SQLite recycles rowids, so this site's jump list must go too.
+            forgetSource(s.id);
+            setSites(await fetchSites());
+          } catch (err) {
+            setError(String(err));
+          }
+        })();
+      },
+    });
   };
 
   return (

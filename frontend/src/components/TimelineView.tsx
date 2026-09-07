@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { resumeTransfer, cancelTransfer, type Transfer } from "../ipc";
+import { resumeTransfer, type Transfer } from "../ipc";
+import { confirmCancel } from "../lib/confirmCancel";
 import { describeTransferError, formatDuration, formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
 import { nextUp } from "../lib/claimOrder";
@@ -256,7 +257,7 @@ export default function TimelineView() {
                       <button className="btn btn--primary" onClick={() => void resumeTransfer(e.transferId!)}>
                         <Play size={11} /> Retry now
                       </button>
-                      <button className="btn" onClick={() => void cancelTransfer(e.transferId!)}>
+                      <button className="btn" onClick={() => confirmCancel(e.transferId!)}>
                         <Close size={11} /> Skip
                       </button>
                     </span>

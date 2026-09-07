@@ -2,7 +2,6 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ComponentType } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-  cancelTransfer,
   clearDoneTransfers,
   clearFailedTransfers,
   getSettings,
@@ -18,9 +17,9 @@ import {
 import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
 import { describeTransferError as describeError, formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
+import { confirmCancel } from "../lib/confirmCancel";
 import { toast } from "../lib/toast";
 import { useUiStore } from "../store";
-import PromptDialog, { type PromptSpec } from "./PromptDialog";
 import {
   ArrowUp,
   Check,
@@ -111,7 +110,6 @@ const STATE_RANK: Record<string, number> = {
 export default function QueueDock() {
   const { style: colStyle, startResize, reset } = useColumnWidths(QUEUE_COLUMNS, "ui.queue_columns");
   const [streak, setStreak] = useState(false);
-  const [prompt, setPrompt] = useState<PromptSpec | null>(null);
   const transfers = useUiStore((s) => s.transfers);
   const progress = useUiStore((s) => s.progress);
   const open = useUiStore((s) => s.queueOpen);
@@ -120,6 +118,7 @@ export default function QueueDock() {
   const applyProgress = useUiStore((s) => s.applyProgress);
   const patchTransferState = useUiStore((s) => s.patchTransferState);
   const sites = useUiStore((s) => s.sites);
+  const askConfirm = useUiStore((s) => s.askConfirm);
   const [sort, setSort] = useState<QSort>({ key: "added", desc: false });
   // A click during the async hydration read must win over the stale stored
   // value (same rule prefs.ts enforces for the other UI settings).
@@ -340,7 +339,8 @@ export default function QueueDock() {
     // while it sits open.
     const ids = transfers.filter((t) => t.state === "failed").map((t) => t.id);
     const one = ids.length === 1;
-    setPrompt({
+    askConfirm({
+      suppressKey: "clear-failed",
       title: `Clear ${ids.length} failed transfer${one ? "" : "s"}?`,
       body: one
         ? "Its part-downloaded data is deleted too, so this file starts from the beginning if you queue it again. Finished files are untouched."
@@ -364,12 +364,12 @@ export default function QueueDock() {
           .catch((err: unknown) => toast("error", String(err)));
       },
     });
-  }, [transfers]);
+  }, [transfers, askConfirm]);
 
   // Cancelled rows can still have data on disk or on a server, so this can
   // legitimately keep some back; saying "cleared" while rows stay on screen
   // would read as a bug.
-  const clearDone = useCallback(() => {
+  const runClearDone = useCallback(() => {
     void clearDoneTransfers()
       .then(({ kept }) => {
         if (kept > 0) {
@@ -381,6 +381,22 @@ export default function QueueDock() {
       })
       .catch((err: unknown) => toast("error", String(err)));
   }, []);
+
+  const clearDone = useCallback(() => {
+    const cancelled = transfers.filter((t) => t.state === "cancelled").length;
+    if (cancelled > 0) {
+      askConfirm({
+        title: "Clear finished transfers?",
+        body: `This includes ${cancelled} cancelled transfer${cancelled === 1 ? "" : "s"}, whose part-transferred data is deleted with the row. Completed transfers are just removed from the list; the files you downloaded are untouched.`,
+        confirmLabel: "Clear done",
+        danger: true,
+        suppressKey: "clear-done",
+        onConfirm: runClearDone,
+      });
+      return;
+    }
+    runClearDone();
+  }, [transfers, askConfirm, runClearDone]);
 
   const active = live.filter((t) => t.state === "active");
   const aggRate = active.reduce((s, t) => s + t.rate, 0);
@@ -414,8 +430,6 @@ export default function QueueDock() {
         <span className="dock__title">Queue</span>
         <ChevronRight size={12} className={`dock__caret ${open ? "dock__caret--open" : ""}`} />
       </button>
-
-      <PromptDialog spec={prompt} onClose={() => setPrompt(null)} />
 
       {open && (
         <div className="dock__body" style={colStyle} ref={bodyRef}>
@@ -573,7 +587,7 @@ export default function QueueDock() {
                       </button>
                     ) : null}
                     {!["completed", "cancelled"].includes(t.state) && (
-                      <button title="Cancel" onClick={() => void cancelTransfer(t.id)}>
+                      <button title="Cancel" onClick={() => confirmCancel(t.id)}>
                         <Close size={11} />
                       </button>
                     )}
