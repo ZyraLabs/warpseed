@@ -714,6 +714,10 @@ type DownloadItem struct {
 	Src   string `json:"src"`
 	Size  int64  `json:"size"`
 	IsDir bool   `json:"isDir"`
+	// ModTime is the remote timestamp from the listing, RFC3339. The
+	// overwrite policy needs it to tell a better copy from a downgrade;
+	// empty or unparseable simply means "unknown".
+	ModTime string `json:"modTime"`
 }
 
 // UploadItem is one local file or folder selected for upload.
@@ -721,6 +725,254 @@ type UploadItem struct {
 	Src   string `json:"src"`
 	Size  int64  `json:"size"`
 	IsDir bool   `json:"isDir"`
+}
+
+// unixFromRFC3339 turns a listing timestamp into the policy's clock.
+// Unknown or unparseable is 0, which the policy reads as "proves nothing".
+func unixFromRFC3339(s string) int64 {
+	if s == "" {
+		return 0
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return 0
+	}
+	return t.Unix()
+}
+
+// localFacts describes a local source for the policy, falling back to the
+// size the caller already knows if the file cannot be stat'd.
+func localFacts(p string, size int64) queue.FileFacts {
+	if st, err := os.Stat(p); err == nil {
+		return queue.FileFacts{Size: st.Size(), Mtime: st.ModTime().Unix()}
+	}
+	return queue.FileFacts{Size: size}
+}
+
+// --- Overwrite policy ---
+//
+// The destination is checked BEFORE the transfer is queued, not at the
+// rename after it. The old behaviour re-transferred a whole file and only
+// then discovered it was replacing something, so a 50 GB download cost 50 GB
+// to find out it was unwanted. Anything the policy cannot decide is held in
+// the queue rather than guessed at; see internal/queue/conflict.go.
+
+// remoteDirCache answers "what is already in this folder" from one listing
+// per folder instead of one stat per file. Uploading a 10,000-file tree
+// otherwise pays a full round trip per file before a single byte moves —
+// minutes of nothing on a link with any latency. Scoped to one enqueue run,
+// so it cannot go stale in any way that matters.
+type remoteDirCache struct {
+	c    *sftpfast.Client
+	dirs map[string]map[string]queue.FileFacts
+}
+
+func newRemoteDirCache(c *sftpfast.Client) *remoteDirCache {
+	return &remoteDirCache{c: c, dirs: map[string]map[string]queue.FileFacts{}}
+}
+
+// lookup returns the facts for one remote path, or nil if nothing is there.
+// A directory is reported as absent: it is not a file the policy can compare
+// against, and the transfer will fail fast with a real error instead.
+func (rc *remoteDirCache) lookup(p string) (*queue.FileFacts, error) {
+	if rc == nil || rc.c == nil {
+		return nil, nil
+	}
+	dir, name := path.Dir(p), path.Base(p)
+	entries, ok := rc.dirs[dir]
+	if !ok {
+		entries = map[string]queue.FileFacts{}
+		listing, err := rc.c.List(dir)
+		if err != nil {
+			// An unreadable directory is not proof the file is absent, but
+			// it is also not a clash. Cache the empty result so a whole tree
+			// under an unreadable parent costs one attempt, not thousands.
+			rc.dirs[dir] = entries
+			return nil, nil
+		}
+		for _, e := range listing.Entries {
+			if e.IsDir {
+				continue
+			}
+			entries[e.Name] = queue.FileFacts{
+				Size: e.Size, Mtime: unixFromRFC3339(e.ModTime),
+			}
+		}
+		rc.dirs[dir] = entries
+	}
+	f, found := entries[name]
+	if !found {
+		return nil, nil
+	}
+	return &f, nil
+}
+
+// existingFacts reports what is already at a transfer's destination, or nil
+// if nothing is. c is needed only for uploads, whose destination is remote.
+func (a *App) existingFacts(t queue.Transfer, c *sftpfast.Client) (*queue.FileFacts, error) {
+	if t.Direction == "upload" {
+		if c == nil {
+			// No connection to look with. Queue it and let it behave as
+			// before rather than refusing the transfer outright.
+			return nil, nil
+		}
+		size, mtime, isDir, err := c.StatRemoteEntry(t.Dst)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, nil
+			}
+			return nil, err
+		}
+		if isDir {
+			// A folder where a file should go is not a clash the policy can
+			// resolve, and comparing against a directory's stat size would
+			// call a 3 GB upload "newer and larger" and send the whole thing
+			// before the server refused it. Let it queue and fail fast.
+			return nil, nil
+		}
+		return &queue.FileFacts{Size: size, Mtime: mtime}, nil
+	}
+	st, err := os.Stat(t.Dst)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	if st.IsDir() {
+		// A folder where a file should go is not a conflict this policy can
+		// resolve; let the transfer fail with a real error instead.
+		return nil, nil
+	}
+	return &queue.FileFacts{Size: st.Size(), Mtime: st.ModTime().Unix()}, nil
+}
+
+// enqueueWithPolicy queues one transfer after applying the overwrite policy.
+// Returns 0 when the policy skipped it. incoming carries the source's facts,
+// which the caller already has from the listing or a local stat.
+func (a *App) enqueueWithPolicy(t queue.Transfer, incoming queue.FileFacts, c *sftpfast.Client) (int64, error) {
+	return a.enqueueWithPolicyCached(t, incoming, c, nil)
+}
+
+// enqueueWithPolicyCached is enqueueWithPolicy with a folder listing cache,
+// for walks that queue thousands of files into the same handful of folders.
+func (a *App) enqueueWithPolicyCached(t queue.Transfer, incoming queue.FileFacts, c *sftpfast.Client, rc *remoteDirCache) (int64, error) {
+	var (
+		existing *queue.FileFacts
+		err      error
+	)
+	if rc != nil && t.Direction == "upload" {
+		existing, err = rc.lookup(t.Dst)
+	} else {
+		existing, err = a.existingFacts(t, c)
+	}
+	if err != nil {
+		// A destination we cannot read is not a licence to overwrite it, but
+		// it is also not proof of a clash. Queue it and let the transfer
+		// surface the real error.
+		log.Printf("enqueue: stat destination %s: %v", t.Dst, err)
+		existing = nil
+	}
+	if existing == nil {
+		return a.store.EnqueueTransfer(t)
+	}
+
+	kind := queue.ClassifyConflict(incoming, *existing)
+	switch a.store.ConflictAction(kind) {
+	case queue.ActionSkip:
+		return 0, nil
+	case queue.ActionRename:
+		free, ferr := a.freeName(t, c)
+		if ferr != nil {
+			log.Printf("enqueue: free name for %s: %v", t.Dst, ferr)
+			break // fall through to holding it for a decision
+		}
+		t.Dst = free
+		return a.store.EnqueueTransfer(t)
+	case queue.ActionOverwrite:
+		return a.store.EnqueueTransfer(t)
+	}
+
+	id, err := a.store.EnqueueTransfer(t)
+	if err != nil || id == 0 {
+		return id, err
+	}
+	if serr := a.store.SetConflict(id, queue.Conflict{
+		Kind: kind, Incoming: incoming, Existing: *existing,
+	}); serr != nil {
+		// The row exists but the hold does not, which makes it fully
+		// dispatchable — it would transfer and replace the very file the
+		// policy just decided to ask about. Every other error path here
+		// fails closed; this one must too, so the row goes.
+		if _, derr := a.store.DeletePending(id); derr != nil {
+			log.Printf("enqueue: remove unheld row %d: %v", id, derr)
+		}
+		return 0, serr
+	}
+	return id, nil
+}
+
+// freeName finds an unused destination beside the existing file, using the
+// Windows convention: "season one.mkv" becomes "season one (1).mkv". Gives
+// up after a sane number of tries rather than spinning on a directory that
+// somehow holds them all.
+func (a *App) freeName(t queue.Transfer, c *sftpfast.Client) (string, error) {
+	remote := t.Direction == "upload"
+	dir, base := filepath.Dir(t.Dst), filepath.Base(t.Dst)
+	if remote {
+		dir, base = path.Dir(t.Dst), path.Base(t.Dst)
+	}
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	for i := 1; i <= 999; i++ {
+		name := fmt.Sprintf("%s (%d)%s", stem, i, ext)
+		cand := filepath.Join(dir, name)
+		if remote {
+			cand = path.Join(dir, name)
+		}
+		free, err := a.nameIsFree(cand, remote, c)
+		if err != nil {
+			return "", err
+		}
+		if !free {
+			continue
+		}
+		// Free on disk is not free if another queued row is already headed
+		// there. Without this, resolving two clashes at once points both at
+		// the same new name and the second renames over the first.
+		claimed, cerr := a.store.DstIsClaimed(cand, t.Direction, t.SiteID)
+		if cerr != nil {
+			return "", cerr
+		}
+		if !claimed {
+			return cand, nil
+		}
+	}
+	return "", fmt.Errorf("no free name beside %s", t.Dst)
+}
+
+func (a *App) nameIsFree(candidate string, remote bool, c *sftpfast.Client) (bool, error) {
+	if remote {
+		if c == nil {
+			return false, errors.New("no connection to check remote names")
+		}
+		_, _, err := c.StatRemote(candidate)
+		if err == nil {
+			return false, nil
+		}
+		if errors.Is(err, fs.ErrNotExist) {
+			return true, nil
+		}
+		return false, err
+	}
+	_, err := os.Stat(candidate)
+	if err == nil {
+		return false, nil
+	}
+	if os.IsNotExist(err) {
+		return true, nil
+	}
+	return false, err
 }
 
 // EnqueueDownloads queues remote files for download into localDir. Folders
@@ -752,25 +1004,34 @@ func (a *App) EnqueueDownloads(siteID int64, items []DownloadItem, localDir stri
 	}
 
 	ids := make([]int64, 0, len(files))
+	skippedByPolicy := 0
 	for _, it := range files {
 		name, err := safeLocalName(it.Src)
 		if err != nil {
 			return ids, err
 		}
-		id, err := a.store.EnqueueTransfer(queue.Transfer{
+		id, err := a.enqueueWithPolicy(queue.Transfer{
 			SiteID: siteID,
 			Src:    it.Src,
 			Dst:    filepath.Join(localDir, name),
 			Size:   it.Size,
-		})
+		}, queue.FileFacts{Size: it.Size, Mtime: unixFromRFC3339(it.ModTime)}, nil)
 		if err != nil {
 			return ids, err
+		}
+		if id == 0 {
+			skippedByPolicy++
+			continue
 		}
 		ids = append(ids, id)
 	}
 
 	if len(dirs) > 0 {
 		go a.expandRemoteDirs(client, siteID, dirs, localDir)
+	}
+	if skippedByPolicy > 0 {
+		a.sink.Emit("app:info", fmt.Sprintf(
+			"%d file(s) skipped by your overwrite rules", skippedByPolicy))
 	}
 
 	a.sink.Emit("queue:changed", nil)
@@ -790,7 +1051,7 @@ func (a *App) expandRemoteDirs(client *sftpfast.Client, siteID int64, dirs []Dow
 			a.sink.Emit("app:error", nerr.Error())
 			continue
 		}
-		err := client.WalkFiles(a.ctx, root, func(remote string, size int64) error {
+		err := client.WalkFiles(a.ctx, root, func(remote string, size, mtime int64) error {
 			rel := strings.TrimPrefix(remote, root)
 			rel = strings.TrimPrefix(rel, "/")
 			// Every path component here is server-supplied; keep it inside
@@ -800,10 +1061,15 @@ func (a *App) expandRemoteDirs(client *sftpfast.Client, siteID int64, dirs []Dow
 				skipped++
 				return nil
 			}
-			if _, err := a.store.EnqueueTransfer(queue.Transfer{
+			id, err := a.enqueueWithPolicy(queue.Transfer{
 				SiteID: siteID, Src: remote, Dst: dst, Size: size,
-			}); err != nil {
+			}, queue.FileFacts{Size: size, Mtime: mtime}, nil)
+			if err != nil {
 				return err
+			}
+			if id == 0 {
+				skipped++
+				return nil
 			}
 			total++
 			if total%25 == 0 {
@@ -818,7 +1084,7 @@ func (a *App) expandRemoteDirs(client *sftpfast.Client, siteID int64, dirs []Dow
 	}
 	msg := fmt.Sprintf("Queued %d file(s) from %d folder(s)", total, len(dirs))
 	if skipped > 0 {
-		msg += fmt.Sprintf(" · %d skipped (unsafe names)", skipped)
+		msg += fmt.Sprintf(" · %d skipped (overwrite rules, or an unsafe name)", skipped)
 	}
 	a.sink.Emit("app:info", msg)
 	a.sink.Emit("queue:changed", nil)
@@ -832,27 +1098,41 @@ func (a *App) EnqueueUploads(siteID int64, items []UploadItem, remoteDir string)
 		return nil, errNoStore
 	}
 	ids := make([]int64, 0, len(items))
+	skippedByPolicy := 0
+	// The destination of an upload is remote, so checking it needs the
+	// browse connection. Without one the policy simply does not fire.
+	a.mu.Lock()
+	upClient := a.sessions[siteID]
+	a.mu.Unlock()
 	var dirs []UploadItem
 	for _, it := range items {
 		if it.IsDir {
 			dirs = append(dirs, it)
 			continue
 		}
-		id, err := a.store.EnqueueTransfer(queue.Transfer{
+		id, err := a.enqueueWithPolicy(queue.Transfer{
 			SiteID:    siteID,
 			Direction: "upload",
 			Src:       it.Src,
 			Dst:       path.Join(remoteDir, filepath.Base(it.Src)),
 			Size:      it.Size,
-		})
+		}, localFacts(it.Src, it.Size), upClient)
 		if err != nil {
 			return ids, err
+		}
+		if id == 0 {
+			skippedByPolicy++
+			continue
 		}
 		ids = append(ids, id)
 	}
 
 	if len(dirs) > 0 {
 		go a.expandLocalDirs(siteID, dirs, remoteDir)
+	}
+	if skippedByPolicy > 0 {
+		a.sink.Emit("app:info", fmt.Sprintf(
+			"%d file(s) skipped by your overwrite rules", skippedByPolicy))
 	}
 
 	a.sink.Emit("queue:changed", nil)
@@ -864,6 +1144,12 @@ func (a *App) expandLocalDirs(siteID int64, dirs []UploadItem, remoteDir string)
 	const maxEntries = 50000
 	total := 0
 	skipped := 0
+	// Needed to see what is already on the server; without a session the
+	// overwrite policy simply does not fire for these.
+	a.mu.Lock()
+	upClient := a.sessions[siteID]
+	a.mu.Unlock()
+	cache := newRemoteDirCache(upClient)
 	for _, dir := range dirs {
 		root := filepath.Clean(dir.Src)
 		err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -899,10 +1185,15 @@ func (a *App) expandLocalDirs(siteID int64, dirs []UploadItem, remoteDir string)
 				return rerr
 			}
 			dst := path.Join(remoteDir, filepath.Base(root), filepath.ToSlash(rel))
-			if _, err := a.store.EnqueueTransfer(queue.Transfer{
+			id, eerr := a.enqueueWithPolicyCached(queue.Transfer{
 				SiteID: siteID, Direction: "upload", Src: p, Dst: dst, Size: info.Size(),
-			}); err != nil {
-				return err
+			}, queue.FileFacts{Size: info.Size(), Mtime: info.ModTime().Unix()}, upClient, cache)
+			if eerr != nil {
+				return eerr
+			}
+			if id == 0 {
+				skipped++
+				return nil
 			}
 			total++
 			if total%25 == 0 {
@@ -1108,6 +1399,89 @@ func (a *App) removeParts(t queue.Transfer, going []int64) bool {
 	return ok
 }
 
+// ConflictResult reports what a resolution actually did, so the UI can say
+// so rather than assuming every row moved.
+type ConflictResult struct {
+	Resolved int `json:"resolved"`
+	Skipped  int `json:"skipped"`
+	Failed   int `json:"failed"`
+}
+
+// ResolveConflicts releases held transfers with one of the policy actions.
+// Passing no ids resolves every held row — the "apply to all" button.
+//
+// Rows are named explicitly for the same reason Clear failed names them: the
+// user is answering about the rows they were shown, and anything that lands
+// in the queue while they are reading must not be swept along with it.
+func (a *App) ResolveConflicts(ids []int64, action string) (ConflictResult, error) {
+	var res ConflictResult
+	if a.store == nil {
+		return res, errNoStore
+	}
+	if !queue.ValidActions[action] || action == queue.ActionAsk {
+		return res, fmt.Errorf("unknown conflict action %q", action)
+	}
+	held, err := a.store.ConflictTransfers()
+	if err != nil {
+		return res, err
+	}
+	want := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	defer func() {
+		a.sink.Emit("queue:changed", nil)
+		a.dispatcher.Wake()
+	}()
+
+	for _, t := range held {
+		if len(want) > 0 && !want[t.ID] {
+			continue
+		}
+		switch action {
+		case queue.ActionSkip:
+			// Nothing has been transferred, so there is nothing to clean up
+			// — the row is simply retired, and Clear done removes it.
+			if cerr := a.dispatcher.Cancel(t.ID); cerr != nil {
+				log.Printf("resolve conflict: skip %d: %v", t.ID, cerr)
+				res.Failed++
+				continue
+			}
+			// Cancel leaves the hold in place; clear it so the row reads as
+			// cancelled rather than as still waiting for an answer.
+			if _, rerr := a.store.ResolveConflict(t.ID, ""); rerr != nil {
+				log.Printf("resolve conflict: clear hold %d: %v", t.ID, rerr)
+			}
+			res.Skipped++
+		case queue.ActionRename:
+			var c *sftpfast.Client
+			if t.Direction == "upload" {
+				a.mu.Lock()
+				c = a.sessions[t.SiteID]
+				a.mu.Unlock()
+			}
+			free, ferr := a.freeName(t, c)
+			if ferr != nil {
+				log.Printf("resolve conflict: rename %d: %v", t.ID, ferr)
+				res.Failed++
+				continue
+			}
+			if ok, rerr := a.store.ResolveConflict(t.ID, free); rerr != nil || !ok {
+				res.Failed++
+				continue
+			}
+			res.Resolved++
+		default: // overwrite
+			if ok, rerr := a.store.ResolveConflict(t.ID, ""); rerr != nil || !ok {
+				res.Failed++
+				continue
+			}
+			res.Resolved++
+		}
+	}
+	return res, nil
+}
+
 // --- Bookmark bindings ---
 //
 // siteID 0 is the local filesystem, matching the storage convention.
@@ -1210,6 +1584,17 @@ func (a *App) OpenDataFolder() error {
 // settingValidators allowlists the keys the frontend may write AND the
 // values it may write: a persisted 0 concurrency would stall the queue
 // forever, so bad values are rejected at the boundary, not absorbed.
+// The overwrite policy's five keys all take the same four actions, so they
+// are registered rather than spelled out one by one — a new conflict kind
+// added in conflict.go is validated automatically instead of silently
+// accepting anything.
+func init() {
+	for _, k := range queue.ConflictSettingKeys {
+		settingValidators[k.Key] = oneOf(
+			queue.ActionAsk, queue.ActionOverwrite, queue.ActionSkip, queue.ActionRename)
+	}
+}
+
 var settingValidators = map[string]func(string) error{
 	"transfers.global_max": intRange(1, 16),
 	"transfers.site_max":   intRange(1, 8),

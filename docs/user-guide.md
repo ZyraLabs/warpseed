@@ -210,6 +210,39 @@ finished rows. Queue a whole season folder and every row is there; the
 queue itself has no limit, and rows beyond those windows are still worked
 through — they simply appear as earlier ones finish.
 
+### When the file already exists
+
+warpseed checks the destination **before** it starts transferring, so a file
+you already have is never re-downloaded just to be replaced at the end.
+
+What happens is set per situation in **Settings → When the file already
+exists**:
+
+| Situation | Default |
+|---|---|
+| Incoming is newer and larger | Overwrite |
+| Incoming is smaller | Ask |
+| Incoming is older | Ask |
+| Identical (same size and time) | Skip |
+| Anything else | Ask |
+
+Each can be **Overwrite**, **Skip**, **Keep both**, or **Ask**. Newer *and*
+larger is the only case that replaces a file on its own — a bigger file with a
+later date is nearly always a better copy of the same thing. Anything that
+could be a downgrade asks.
+
+**Ask** does not interrupt you. The file is queued but held, and the dock
+says so: *"3 files already exist at the destination."* Each row shows why —
+sizes and dates side by side — with **Skip**, **Keep both** and **Overwrite**
+per row, or for all of them at once. A folder full of clashes is one decision
+rather than a dialog per file. Held transfers use no connection and do not
+hold up the rest of the queue.
+
+**Keep both** transfers to a free name beside the existing file:
+`ep01.mkv` becomes `ep01 (1).mkv`.
+
+This applies to uploads as well — "incoming" is whichever file is being sent.
+
 ### Before anything is deleted
 
 Cancelling a transfer, clearing cancelled transfers from the queue, deleting

@@ -980,6 +980,13 @@ func (d *Dispatcher) discardPartials(t queue.Transfer) {
 		applog.Debugf("dispatch: cancel %d: no longer cancelled (%v), leaving its data alone", t.ID, err)
 		return
 	}
+	if cur.BytesDone <= 0 {
+		// Nothing was ever written, so there are no placeholders and nothing
+		// to reset. Skipping the work matters: "Skip all" on a folder of
+		// held uploads would otherwise dial a fresh SSH connection per row
+		// to delete files that were never created.
+		return
+	}
 	if n, err := d.store.OtherLiveTransfersForDst([]int64{t.ID}, t.Dst); err != nil {
 		log.Printf("dispatch: cancel %d: dst owners: %v", t.ID, err)
 		return

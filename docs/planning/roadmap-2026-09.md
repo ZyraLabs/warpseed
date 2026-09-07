@@ -13,13 +13,14 @@ Legend: **[S]** small (under an hour) · **[M]** medium (a few hours) ·
 
 These can lose or waste a user's data. Nothing else ships first.
 
-**Status:** 1.2 shipped in 1.1.3; 1.3–1.6 shipped in 1.1.4. **1.1 is all that
-remains**, and it is the one with a user-facing policy to design rather than a
-defect to close.
+**Status: complete.** 1.2 shipped in 1.1.3, 1.3–1.6 in 1.1.4, and 1.1 in
+1.1.6. Every known way the queue could lose, waste or misplace a user's bytes
+is closed. New data-safety work goes at the top of this phase and ships before
+anything in Phase 2.
 
 | # | Item | Size | Why it matters |
 |---|---|---|---|
-| 1.1 | **Overwrite/conflict policy** | M | Downloading a file you already have silently replaces it, *after* re-transferring the whole thing. No prompt, no check (`download.go:106`). User-specified rules: newer+larger → overwrite, smaller → ask, older → ask, configurable, with skip/overwrite/rename and apply-to-all. |
+| 1.1 | ~~**Overwrite/conflict policy**~~ | M | **Done in 1.1.6.** The destination is checked at enqueue, before any bytes move. Rules per clash kind (newer+larger, smaller, older, identical, other) each resolve to overwrite / skip / keep both / ask, configurable in Settings. "Ask" holds the row in the queue with the sizes and dates shown, resolvable per row or all at once. Applies to uploads and downloads. |
 | 1.2 | ~~**Stop discarding a chunk plan on a one-connection run**~~ | S | **Done in 1.1.3.** A plan with real progress now requeues as a capacity error instead of falling to the linear path, and the connection ceiling never narrows a chunk-eligible transfer below 2 lanes (which would have looked like a deliberate setting and slipped past the guard). Still discarded, correctly, when the plan is invalid: size/mtime mismatch, or the user setting lanes to 1. |
 | 1.3 | ~~**Per-destination in-flight lock**~~ | S | **Done in 1.1.4.** `activeDst` keyed by site+path for uploads and by local path for downloads stops two rows writing one placeholder; `EnqueueTransfer` returns the existing row for an exact re-queue instead of adding a second. A *different* source aimed at the same destination is still accepted — that is a conflict for 1.1 to resolve, not a duplicate to swallow. |
 | 1.4 | ~~**Clear `attempt`/`error` in `RecoverInterrupted`**~~ | S | **Done in 1.1.4.** Recovery resets `attempt`, `error` and `next_retry_at`; byte progress is untouched, so it still resumes rather than restarts. |

@@ -332,7 +332,12 @@ export default function FilePane({ side }: { side: PaneSide }) {
       try {
         await enqueueDownloads(
           source,
-          items.map((e) => ({ src: base + e.name, size: e.size, isDir: e.isDir })),
+          items.map((e) => ({
+            src: base + e.name,
+            size: e.size,
+            isDir: e.isDir,
+            modTime: e.modTime,
+          })),
           other.path,
         );
         setMarks(new Set());

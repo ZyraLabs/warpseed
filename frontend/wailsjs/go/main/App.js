@@ -122,6 +122,10 @@ export function ResolvePrompt(arg1, arg2) {
   return window['go']['main']['App']['ResolvePrompt'](arg1, arg2);
 }
 
+export function ResolveConflicts(arg1, arg2) {
+  return window['go']['main']['App']['ResolveConflicts'](arg1, arg2);
+}
+
 export function ResumeTransfer(arg1) {
   return window['go']['main']['App']['ResumeTransfer'](arg1);
 }

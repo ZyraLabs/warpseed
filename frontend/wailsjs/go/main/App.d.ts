@@ -65,6 +65,8 @@ export function RenameRemote(arg1:number,arg2:string,arg3:string,arg4:string):Pr
 
 export function ResolvePrompt(arg1:string,arg2:boolean):Promise<void>;
 
+export function ResolveConflicts(arg1:Array<number>,arg2:string):Promise<main.ConflictResult>;
+
 export function ResumeTransfer(arg1:number):Promise<void>;
 
 export function RetryFailedTransfers():Promise<number>;

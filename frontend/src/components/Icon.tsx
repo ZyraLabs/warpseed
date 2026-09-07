@@ -100,6 +100,14 @@ export const Close = icon(<path d="m4 4 8 8M12 4l-8 8" />);
 
 export const Check = icon(<path d="m2.75 8.5 3.5 3.5 7-8" />);
 
+// Two offset sheets: "keep both", the rename action on a queue conflict.
+export const CopyBoth = icon(
+  <>
+    <rect x="2.25" y="2.25" width="8" height="9.5" rx="1.25" />
+    <path d="M5.75 14.25h6a1.25 1.25 0 0 0 1.25-1.25V5.5" />
+  </>,
+);
+
 export const Warning = icon(
   <>
     <path d="M8 2.25 14.75 13.5H1.25z" />

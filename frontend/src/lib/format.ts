@@ -46,3 +46,26 @@ export function describeTransferError(err: string): string {
   if (e.includes("no such file")) return "The file no longer exists on the server.";
   return err;
 }
+
+/** Plain-language explanation of why a transfer is waiting for a decision.
+    Direction-neutral on purpose: "the copy you have" is on your disk for a
+    download and on the server for an upload, and the question is the same. */
+export function describeConflict(c: {
+  kind: string;
+  incoming: { size: number; mtime: number };
+  existing: { size: number; mtime: number };
+}): string {
+  const sizes = `${formatSize(c.incoming.size)} incoming vs ${formatSize(c.existing.size)} already there`;
+  switch (c.kind) {
+    case "identical":
+      return `Already there, same size and time — ${sizes}`;
+    case "newer_larger":
+      return `Incoming is newer and larger — ${sizes}`;
+    case "smaller":
+      return `Incoming is smaller than the copy you have — ${sizes}`;
+    case "older":
+      return `Incoming is older than the copy you have — ${sizes}`;
+    default:
+      return `A different file is already there — ${sizes}`;
+  }
+}

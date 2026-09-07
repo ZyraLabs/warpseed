@@ -478,9 +478,19 @@ func finalizeChunked(part, localPath string, size int64) error {
 // StatRemote reports a remote file's size and modification time, used to
 // plan chunks and to detect a source that changed under a resume.
 func (c *Client) StatRemote(remotePath string) (size int64, modTimeUnix int64, err error) {
+	size, modTimeUnix, _, err = c.StatRemoteEntry(remotePath)
+	return size, modTimeUnix, err
+}
+
+// StatRemoteEntry is StatRemote plus whether the path is a directory. The
+// overwrite policy needs that: a directory's stat size is a filesystem
+// bookkeeping number, and comparing a real file against it would call a
+// 3 GB upload "newer and larger" and send the lot before the server refused
+// to be overwritten.
+func (c *Client) StatRemoteEntry(remotePath string) (size, modTimeUnix int64, isDir bool, err error) {
 	st, err := c.sftp.Stat(remotePath)
 	if err != nil {
-		return 0, 0, fmt.Errorf("stat remote %q: %w", remotePath, err)
+		return 0, 0, false, fmt.Errorf("stat remote %q: %w", remotePath, err)
 	}
-	return st.Size(), st.ModTime().Unix(), nil
+	return st.Size(), st.ModTime().Unix(), st.IsDir(), nil
 }

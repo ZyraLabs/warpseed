@@ -2,6 +2,7 @@
    Everything else imports from here (ux-spec/plan facade rule). */
 import {
   CancelTransfer,
+  ResolveConflicts,
   ClearDoneTransfers,
   ClearFailedTransfers,
   RetryFailedTransfers,
@@ -209,6 +210,10 @@ export interface Transfer {
   error: string | null;
   createdAt: string;
   updatedAt: string;
+  /** Set when the destination already exists and the policy said to ask.
+      The row is queued but held: nothing transfers until it is resolved.
+      JSON — parse with parseConflict. */
+  conflict?: string | null;
   /** Start of the CURRENT run, re-stamped on every claim; null until a
       transfer has actually been picked up. */
   startedAt?: string | null;
@@ -221,6 +226,10 @@ export interface DownloadItem {
   src: string;
   size: number;
   isDir: boolean;
+  /** Remote timestamp from the listing, RFC3339. The overwrite policy needs
+      it to tell an upgrade from a downgrade; without it every comparison
+      falls through to "anything else". */
+  modTime: string;
 }
 
 export interface UploadItem {
@@ -303,6 +312,40 @@ export const transfersList = (): Promise<Transfer[]> =>
 export const pauseTransfer = (id: number): Promise<void> => PauseTransfer(id);
 export const resumeTransfer = (id: number): Promise<void> => ResumeTransfer(id);
 export const cancelTransfer = (id: number): Promise<void> => CancelTransfer(id);
+/** One side of an overwrite clash. mtime is Unix seconds; 0 = unknown. */
+export interface FileFacts {
+  size: number;
+  mtime: number;
+}
+export interface Conflict {
+  kind: "identical" | "newer_larger" | "smaller" | "older" | "other";
+  incoming: FileFacts;
+  existing: FileFacts;
+}
+export interface ConflictResult {
+  resolved: number;
+  skipped: number;
+  failed: number;
+}
+
+/** Parse a held row's conflict. Returns null rather than throwing: a row we
+    cannot explain must still render, not blank the queue. */
+export function parseConflict(raw: string | null | undefined): Conflict | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as Conflict;
+  } catch {
+    return null;
+  }
+}
+
+/** Release held transfers. Empty ids means every held row ("apply to all"). */
+export const resolveConflicts = (
+  ids: number[],
+  action: "overwrite" | "skip" | "rename",
+): Promise<ConflictResult> =>
+  ResolveConflicts(ids, action) as unknown as Promise<ConflictResult>;
+
 export const clearDoneTransfers = (): Promise<ClearResult> =>
   ClearDoneTransfers() as unknown as Promise<ClearResult>;
 /** Rows whose data could not be accounted for are KEPT, not cleared, so the

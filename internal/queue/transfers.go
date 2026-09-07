@@ -32,20 +32,25 @@ type Transfer struct {
 	// resumed transfer reports the speed of the run you actually watched.
 	StartedAt  *string `json:"startedAt"`
 	StartBytes int64   `json:"startBytes"`
+	// Conflict is set when the destination already exists and the policy
+	// said to ask. The row stays pending but is held out of dispatch until
+	// the user resolves it, so the decision happens before any bytes move.
+	// JSON; see conflict.go.
+	Conflict *string `json:"conflict"`
 }
 
 var ErrTransferNotFound = errors.New("transfer not found")
 
 const transferCols = `id,site_id,engine,direction,src,dst,size,state,priority,
 	bytes_done,attempt,next_retry_at,error,src_mtime,created_at,updated_at,
-	started_at,start_bytes`
+	started_at,start_bytes,conflict`
 
 func scanTransfer(row interface{ Scan(...any) error }) (Transfer, error) {
 	var t Transfer
 	err := row.Scan(&t.ID, &t.SiteID, &t.Engine, &t.Direction, &t.Src, &t.Dst,
 		&t.Size, &t.State, &t.Priority, &t.BytesDone, &t.Attempt,
 		&t.NextRetryAt, &t.Error, &t.SrcMtime, &t.CreatedAt, &t.UpdatedAt,
-		&t.StartedAt, &t.StartBytes)
+		&t.StartedAt, &t.StartBytes, &t.Conflict)
 	return t, err
 }
 
@@ -125,7 +130,8 @@ func (s *Store) EnqueueTransfer(t Transfer) (int64, error) {
 func (s *Store) PendingTransfers(now string) ([]Transfer, error) {
 	rows, err := s.db.Query(
 		`SELECT `+transferCols+` FROM transfers
-		 WHERE state='pending' AND (next_retry_at IS NULL OR next_retry_at <= ?)
+		 WHERE state='pending' AND conflict IS NULL
+		   AND (next_retry_at IS NULL OR next_retry_at <= ?)
 		 ORDER BY priority DESC, id ASC`, now)
 	if err != nil {
 		return nil, fmt.Errorf("pending transfers: %w", err)
@@ -229,6 +235,53 @@ func (s *Store) TransferByID(id int64) (Transfer, error) {
 	return t, nil
 }
 
+// SetConflict holds a row for a decision, storing the facts of the clash.
+func (s *Store) SetConflict(id int64, c Conflict) error {
+	enc, err := c.Encode()
+	if err != nil {
+		return err
+	}
+	_, err = s.db.Exec(
+		`UPDATE transfers SET conflict=?, updated_at=? WHERE id=?`, enc, nowUTC(), id)
+	if err != nil {
+		return fmt.Errorf("set conflict: %w", err)
+	}
+	return nil
+}
+
+// ResolveConflict releases a held row, optionally onto a new destination
+// (the rename action). It only touches rows that are actually held, so a
+// stale click from a list the user has been staring at for ten minutes
+// cannot re-point a transfer that has since started.
+func (s *Store) ResolveConflict(id int64, newDst string) (bool, error) {
+	q := `UPDATE transfers SET conflict=NULL, updated_at=? WHERE id=? AND conflict IS NOT NULL`
+	args := []any{nowUTC(), id}
+	if newDst != "" {
+		q = `UPDATE transfers SET conflict=NULL, dst=?, updated_at=? WHERE id=? AND conflict IS NOT NULL`
+		args = []any{newDst, nowUTC(), id}
+	}
+	res, err := s.db.Exec(q, args...)
+	if err != nil {
+		return false, fmt.Errorf("resolve conflict: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// ConflictTransfers returns every held row, uncapped: the caller resolves
+// them as a batch and a row missing from this list would be a transfer
+// nothing ever releases.
+func (s *Store) ConflictTransfers() ([]Transfer, error) {
+	rows, err := s.db.Query(
+		`SELECT ` + transferCols + ` FROM transfers
+		 WHERE conflict IS NOT NULL ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("conflict transfers: %w", err)
+	}
+	defer rows.Close()
+	return collectTransfers(rows)
+}
+
 // ClaimPending moves a row to active only while it is still pending, and
 // reports whether it won. The dispatcher works from a list it read earlier,
 // so by the time it claims a row the user may have paused or cancelled it —
@@ -237,7 +290,7 @@ func (s *Store) TransferByID(id int64) (Transfer, error) {
 func (s *Store) ClaimPending(id int64) (bool, error) {
 	res, err := s.db.Exec(
 		`UPDATE transfers SET state='active', error=NULL, updated_at=?
-		 WHERE id=? AND state='pending'`, nowUTC(), id)
+		 WHERE id=? AND state='pending' AND conflict IS NULL`, nowUTC(), id)
 	if err != nil {
 		return false, fmt.Errorf("claim transfer: %w", err)
 	}
@@ -346,6 +399,35 @@ func (s *Store) ClearFailedByID(ids []int64) (int64, error) {
 		`DELETE FROM transfers WHERE state='failed' AND id IN (`+string(ph)+`)`, args...)
 	if err != nil {
 		return 0, fmt.Errorf("clear failed: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// DstIsClaimed reports whether an unfinished row already writes this exact
+// destination. "Keep both" asks the filesystem for a free name, but a name
+// nothing has created yet can still be spoken for by another queued row —
+// two clashes resolved in the same click would otherwise both be handed
+// "ep01 (1).mkv" and the second would rename over the first.
+func (s *Store) DstIsClaimed(dst string, direction string, siteID int64) (bool, error) {
+	var n int
+	err := s.db.QueryRow(
+		`SELECT COUNT(*) FROM transfers
+		 WHERE dst=? AND direction=? AND site_id=? AND state IN (`+unfinishedStates+`)`,
+		dst, direction, siteID).Scan(&n)
+	if err != nil {
+		return false, fmt.Errorf("dst claimed: %w", err)
+	}
+	return n > 0, nil
+}
+
+// DeletePending removes a row that has not started, used to undo an enqueue
+// whose follow-up write failed. Guarded on state and on zero progress so it
+// can never remove a transfer that is running or that holds bytes.
+func (s *Store) DeletePending(id int64) (int64, error) {
+	res, err := s.db.Exec(
+		`DELETE FROM transfers WHERE id=? AND state='pending' AND bytes_done=0`, id)
+	if err != nil {
+		return 0, fmt.Errorf("delete pending: %w", err)
 	}
 	return res.RowsAffected()
 }

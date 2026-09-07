@@ -15,7 +15,7 @@ export default function MiniView() {
   const active = transfers.filter((t) => t.state === "active");
   const failed = transfers.filter((t) => t.state === "failed").length;
   const queuedCount = transfers.filter(
-    (t) => t.state === "pending" || t.state === "dispatched",
+    (t) => !t.conflict && (t.state === "pending" || t.state === "dispatched"),
   ).length;
   const aggRate = active.reduce((s, t) => s + (progress[t.id]?.rate ?? 0), 0);
 

@@ -390,6 +390,30 @@ const App = {
   // Both mirror the real bindings: retry only requeues (the dispatcher
   // admits them within the connection budget afterwards), and clear acts
   // on the ids it was given, not on whatever is failed right now.
+  async ResolveConflicts(ids: number[], action: string) {
+    const want = new Set(ids);
+    const held = state.transfers.filter(
+      (t) => t.conflict && (want.size === 0 || want.has(t.id)),
+    );
+    let resolved = 0;
+    let skipped = 0;
+    for (const t of held) {
+      t.conflict = null;
+      if (action === "skip") {
+        setState(t, "cancelled");
+        skipped++;
+        continue;
+      }
+      if (action === "rename") {
+        const dot = t.dst.lastIndexOf(".");
+        t.dst = dot > 0 ? `${t.dst.slice(0, dot)} (1)${t.dst.slice(dot)}` : `${t.dst} (1)`;
+      }
+      resolved++;
+    }
+    emit("queue:changed", null);
+    dispatchNext();
+    return { resolved, skipped, failed: 0 };
+  },
   async RetryFailedTransfers() {
     const failed = state.transfers.filter((t) => t.state === "failed");
     for (const t of failed) {

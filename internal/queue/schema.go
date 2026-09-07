@@ -144,4 +144,15 @@ var migrations = []string{
 	`
 	CREATE INDEX idx_transfers_state_id ON transfers(state, id);
 	`,
+
+	// 010 — overwrite/conflict policy. A transfer whose destination already
+	// exists is held with the facts of the clash rather than dispatched, so
+	// the decision happens BEFORE the bytes move instead of at the rename
+	// after them. Held rows stay 'pending' and are filtered out of
+	// PendingTransfers by this column: adding a state would mean rebuilding
+	// the transfers table to change its CHECK constraint, and that table is
+	// the queue of record for overnight runs.
+	`
+	ALTER TABLE transfers ADD COLUMN conflict TEXT;
+	`,
 }

@@ -258,6 +258,31 @@ export const TRANSFERS: Transfer[] = [
     updatedAt: iso(0),
   },
   {
+    // Held for a decision: the queue's overwrite policy in the mock, so the
+    // conflict bar and the per-row Skip / Keep both / Overwrite are
+    // reachable with `npm run dev`.
+    id: 140,
+    siteId: 1,
+    engine: "sftpfast",
+    direction: "download",
+    src: "/downloads/series/ep04.mkv",
+    dst: "D:\\Media\\series\\ep04.mkv",
+    size: Math.round(1.8 * GiB),
+    state: "pending",
+    priority: 0,
+    bytesDone: 0,
+    attempt: 0,
+    nextRetryAt: null,
+    error: null,
+    conflict: JSON.stringify({
+      kind: "smaller",
+      incoming: { size: Math.round(1.8 * GiB), mtime: 1772409600 },
+      existing: { size: Math.round(2.4 * GiB), mtime: 1772582400 },
+    }),
+    createdAt: iso(1),
+    updatedAt: iso(0),
+  },
+  {
     id: 102,
     siteId: 1,
     engine: "sftpfast",

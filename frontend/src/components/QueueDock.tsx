@@ -3,6 +3,8 @@ import type { ComponentType } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   clearDoneTransfers,
+  parseConflict,
+  resolveConflicts,
   clearFailedTransfers,
   getSettings,
   on,
@@ -15,7 +17,11 @@ import {
   type TransferState,
 } from "../ipc";
 import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
-import { describeTransferError as describeError, formatSize } from "../lib/format";
+import {
+  describeConflict,
+  describeTransferError as describeError,
+  formatSize,
+} from "../lib/format";
 import { baseName } from "../lib/path";
 import { confirmCancel } from "../lib/confirmCancel";
 import { toast } from "../lib/toast";
@@ -25,6 +31,7 @@ import {
   Check,
   ChevronRight,
   Close,
+  CopyBoth,
   Pause,
   Play,
   Refresh,
@@ -316,13 +323,17 @@ export default function QueueDock() {
   const counts = useMemo(() => {
     let queued = 0;
     let failed = 0;
+    let held = 0;
     let totalBytes = 0;
     for (const t of transfers) {
-      if (t.state === "pending" || t.state === "dispatched") queued++;
+      // A held row is pending in the database but is not going anywhere
+      // until it is answered, so it must not be counted as queued work.
+      if (t.conflict) held++;
+      else if (t.state === "pending" || t.state === "dispatched") queued++;
       else if (t.state === "failed") failed++;
       if (t.state !== "completed" && t.state !== "cancelled") totalBytes += Math.max(t.size, 0);
     }
-    return { queued, failed, totalBytes };
+    return { queued, failed, held, totalBytes };
   }, [transfers]);
   // A drive pulled mid-run, or a server that spent an hour refusing
   // connections, fails a whole batch at once. Both of these exist so the
@@ -398,6 +409,50 @@ export default function QueueDock() {
     runClearDone();
   }, [transfers, askConfirm, runClearDone]);
 
+  // Answering every held row at once. The ids are snapshotted with the
+  // count for the same reason Clear failed snapshots them: the user is
+  // answering about the rows they were shown.
+  const resolveAll = useCallback(
+    (action: "overwrite" | "skip" | "rename") => {
+      const ids = transfers.filter((t) => t.conflict).map((t) => t.id);
+      if (ids.length === 0) return;
+      const done = () =>
+        void resolveConflicts(ids, action)
+          .then(({ resolved, skipped, failed }) => {
+            if (failed > 0) {
+              toast("error", `${failed} could not be resolved — see the log`);
+            }
+            const n = resolved + skipped;
+            toast("success", `${n} file${n === 1 ? "" : "s"} resolved`);
+          })
+          .catch((err: unknown) => toast("error", String(err)));
+      if (action !== "overwrite") {
+        done();
+        return;
+      }
+      // Overwrite-all is the one that destroys data, and it does so for
+      // every held row at once.
+      askConfirm({
+        title: `Overwrite ${ids.length} existing file${ids.length === 1 ? "" : "s"}?`,
+        body: "Each of these destinations already has a file, and it will be replaced by the incoming one. This cannot be undone.",
+        confirmLabel: "Overwrite all",
+        danger: true,
+        suppressKey: "overwrite-all",
+        onConfirm: done,
+      });
+    },
+    [transfers, askConfirm],
+  );
+
+  const resolveOne = useCallback(
+    (id: number, action: "overwrite" | "skip" | "rename") => {
+      void resolveConflicts([id], action).catch((err: unknown) =>
+        toast("error", String(err)),
+      );
+    },
+    [],
+  );
+
   const active = live.filter((t) => t.state === "active");
   const aggRate = active.reduce((s, t) => s + t.rate, 0);
   let doneBytes = 0;
@@ -420,6 +475,12 @@ export default function QueueDock() {
         <span>
           {active.length} active · {counts.queued} queued
         </span>
+        {counts.held > 0 && (
+          <span className="chip-held">
+            <Warning size={11} />
+            {counts.held} need{counts.held === 1 ? "s" : ""} a decision
+          </span>
+        )}
         {counts.failed > 0 && (
           <span className="chip-failed">
             <Warning size={11} />
@@ -461,6 +522,25 @@ export default function QueueDock() {
               Clear done
             </button>
           </div>
+
+          {counts.held > 0 && (
+            <div className="conflict-bar" role="status">
+              <Warning size={13} />
+              <span className="conflict-bar__text">
+                <strong>
+                  {counts.held} file{counts.held === 1 ? "" : "s"} already exist
+                  {counts.held === 1 ? "s" : ""} at the destination.
+                </strong>{" "}
+                Nothing is transferred until you decide.
+              </span>
+              <span className="grow" />
+              <button onClick={() => resolveAll("skip")}>Skip all</button>
+              <button onClick={() => resolveAll("rename")}>Keep both</button>
+              <button className="conflict-bar__danger" onClick={() => resolveAll("overwrite")}>
+                Overwrite all
+              </button>
+            </div>
+          )}
 
           {/* Column headers double as resize handles — drag the divider on
               the right of a heading to widen it. */}
@@ -528,6 +608,7 @@ export default function QueueDock() {
               const pct = t.size > 0 ? Math.min(t.bytes / t.size, 1) : 0;
               const siteName = sites.find((s) => s.id === t.siteId)?.name ?? `site ${t.siteId}`;
               const hasError = t.state === "failed" && t.error;
+              const conflict = parseConflict(t.conflict);
               const lanes = t.chunks && t.chunks.length > 1 ? t.chunks : null;
               const StateIcon = STATE_ICON[t.state] ?? ChevronRight;
               return (
@@ -535,7 +616,7 @@ export default function QueueDock() {
                   key={t.id}
                   data-index={vi.index}
                   ref={virtualizer.measureElement}
-                  className={`trow trow--virtual trow--${t.state} ${hasError ? "trow--witherror" : ""}`}
+                  className={`trow trow--virtual trow--${t.state} ${hasError ? "trow--witherror" : ""} ${conflict ? "trow--held" : ""}`}
                   style={{ transform: `translateY(${vi.start - listTop}px)` }}
                 >
                   <span className="trow__icon">
@@ -577,7 +658,19 @@ export default function QueueDock() {
                     </span>
                   )}
                   <span className="trow__actions">
-                    {t.state === "active" || t.state === "pending" ? (
+                    {conflict ? (
+                      <>
+                        <button title="Skip — do not transfer this file" onClick={() => resolveOne(t.id, "skip")}>
+                          <Close size={11} />
+                        </button>
+                        <button title="Keep both — transfer to a free name beside it" onClick={() => resolveOne(t.id, "rename")}>
+                          <CopyBoth size={11} />
+                        </button>
+                        <button title="Overwrite the existing file" onClick={() => resolveOne(t.id, "overwrite")}>
+                          <Check size={11} />
+                        </button>
+                      </>
+                    ) : t.state === "active" || t.state === "pending" ? (
                       <button title="Pause" onClick={() => void pauseTransfer(t.id)}>
                         <Pause size={11} />
                       </button>
@@ -586,13 +679,16 @@ export default function QueueDock() {
                         <Play size={11} />
                       </button>
                     ) : null}
-                    {!["completed", "cancelled"].includes(t.state) && (
+                    {!conflict && !["completed", "cancelled"].includes(t.state) && (
                       <button title="Cancel" onClick={() => confirmCancel(t.id)}>
                         <Close size={11} />
                       </button>
                     )}
                   </span>
                   {hasError && <span className="trow__error">{describeError(t.error ?? "")}</span>}
+                  {conflict && (
+                    <span className="trow__conflict">{describeConflict(conflict)}</span>
+                  )}
                 </div>
               );
             })}

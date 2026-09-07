@@ -351,7 +351,7 @@ func TestWalkFilesEnumeratesTree(t *testing.T) {
 	// Act
 	var paths []string
 	var total int64
-	err := c.WalkFiles(context.Background(), root, func(p string, size int64) error {
+	err := c.WalkFiles(context.Background(), root, func(p string, size, _ int64) error {
 		paths = append(paths, p)
 		total += size
 		return nil

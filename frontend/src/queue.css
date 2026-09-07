@@ -173,6 +173,59 @@
   color: var(--text);
 }
 
+/* A held transfer is not an error and not progress — it is a question. It
+   gets the paused amber rather than the failure red, and the bar sits above
+   the list so a long queue cannot hide it. */
+.conflict-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0 var(--sp-2) var(--sp-1);
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--state-paused) 12%, var(--surface-card));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--state-paused) 40%, transparent);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+}
+.conflict-bar__text {
+  min-width: 0;
+}
+.conflict-bar button {
+  border: none;
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: var(--text-2xs);
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.conflict-bar button:hover {
+  background: var(--surface-3, var(--surface-2));
+}
+.conflict-bar__danger:hover {
+  background: color-mix(in srgb, var(--state-error) 22%, var(--surface-2));
+}
+.chip-held {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--state-paused);
+  font-size: var(--text-2xs);
+}
+.trow--held {
+  background: color-mix(in srgb, var(--state-paused) 7%, transparent);
+}
+.trow__conflict {
+  grid-column: 2 / -1;
+  font-size: var(--text-2xs);
+  color: var(--state-paused);
+  padding-bottom: 2px;
+}
+
 /* Widths come from useColumnWidths as CSS variables, so dragging a column
    never re-renders the rows. Progress takes whatever is left. */
 .trow {

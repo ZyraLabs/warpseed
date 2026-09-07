@@ -122,7 +122,7 @@ func (c *Client) Upload(ctx context.Context, localPath, remotePath string, onSta
 // WalkFiles walks a remote directory tree depth-first, calling fn for every
 // regular file with its full path and size. Used to expand folder downloads
 // into queue rows. Depth and count are bounded to keep runaway trees sane.
-func (c *Client) WalkFiles(ctx context.Context, root string, fn func(path string, size int64) error) error {
+func (c *Client) WalkFiles(ctx context.Context, root string, fn func(path string, size, mtimeUnix int64) error) error {
 	const maxEntries = 50000
 	seen := 0
 	var walk func(dir string, depth int) error
@@ -149,7 +149,14 @@ func (c *Client) WalkFiles(ctx context.Context, root string, fn func(path string
 			if seen > maxEntries {
 				return fmt.Errorf("more than %d files under %q — refusing runaway walk", maxEntries, root)
 			}
-			if err := fn(full, e.Size); err != nil {
+			// mtime comes along because the overwrite policy needs it to
+			// tell a better copy from a downgrade. Unparseable means
+			// unknown (0), which the policy treats as "prove nothing".
+			var mtime int64
+			if t, perr := time.Parse(time.RFC3339, e.ModTime); perr == nil {
+				mtime = t.Unix()
+			}
+			if err := fn(full, e.Size, mtime); err != nil {
 				return err
 			}
 		}

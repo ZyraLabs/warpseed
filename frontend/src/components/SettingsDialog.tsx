@@ -48,6 +48,18 @@ function draftFrom(s: Site): SiteDraft {
 
 /** Settings (Ctrl+,): Appearance, Transfers, Bandwidth, and the site editor
     (feedback batch items 1, 2, 7, 8, 9). Values save on change. */
+// Order and wording of the overwrite rules. Mirrors
+// queue.ConflictSettingKeys; the defaults here are the same defaults the
+// store falls back to, so the dropdown never shows something the backend
+// would not do.
+const CONFLICT_RULES = [
+  { key: "transfers.conflict_newer_larger", def: "overwrite", label: "Incoming is newer and larger" },
+  { key: "transfers.conflict_smaller", def: "ask", label: "Incoming is smaller" },
+  { key: "transfers.conflict_older", def: "ask", label: "Incoming is older" },
+  { key: "transfers.conflict_identical", def: "skip", label: "Identical (same size and time)" },
+  { key: "transfers.conflict_other", def: "ask", label: "Anything else" },
+];
+
 export default function SettingsDialog() {
   const open = useUiStore((s) => s.settingsOpen);
   const setOpen = useUiStore((s) => s.setSettingsOpen);
@@ -266,6 +278,34 @@ export default function SettingsDialog() {
           <p className="set-note">
             Per-site is the default; a site can override it in its own settings. Keep it at
             or below what your server allows — refused connections show up in the log.
+          </p>
+        </section>
+
+        <section className="set-section">
+          <h3>When the file already exists</h3>
+          <p className="set-note set-blurb">
+            Checked before the transfer starts, not after it. &ldquo;Ask&rdquo; holds the
+            file in the queue with the sizes and dates side by side, so a folder full of
+            clashes is one decision rather than a dialog per file. Applies to uploads and
+            downloads alike &mdash; &ldquo;incoming&rdquo; is whichever file is being sent.
+          </p>
+          {CONFLICT_RULES.map((r) => (
+            <div className="set-row" key={r.key}>
+              <label>{r.label}</label>
+              <select
+                value={cfg[r.key] ?? r.def}
+                onChange={(e) => put(r.key, e.target.value)}
+              >
+                <option value="ask">Ask me</option>
+                <option value="overwrite">Overwrite</option>
+                <option value="skip">Skip</option>
+                <option value="rename">Keep both</option>
+              </select>
+            </div>
+          ))}
+          <p className="set-note">
+            Keep both transfers to a free name beside the existing file &mdash;
+            &ldquo;ep01.mkv&rdquo; becomes &ldquo;ep01 (1).mkv&rdquo;.
           </p>
         </section>
 

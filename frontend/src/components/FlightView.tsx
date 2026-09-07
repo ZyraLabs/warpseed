@@ -206,7 +206,11 @@ export default function FlightView() {
 
   const active = live.filter((t) => t.state === "active");
   const failed = live.filter((t) => t.state === "failed");
-  const queued = live.filter((t) => t.state === "pending" || t.state === "dispatched");
+  // Held rows are pending but never claimed; counting them here would say
+  // "200 armed for transfer" with nothing in flight.
+  const queued = live.filter(
+    (t) => !t.conflict && (t.state === "pending" || t.state === "dispatched"),
+  );
   // The rail shows claim order so its top row is the file that really goes
   // next; it depends only on the rows, not on per-tick progress.
   const railRows = useMemo(() => nextUp(transfers).slice(0, RAIL_MAX), [transfers]);
