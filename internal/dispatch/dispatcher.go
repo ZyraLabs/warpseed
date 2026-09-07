@@ -51,7 +51,19 @@ const (
 	dbEvery    = 3 * time.Second
 	// limiter burst: one pipeline window so throttling stays smooth
 	limiterBurst = 1 << 20
+	// How long an observed server connection ceiling is trusted before the
+	// next transfer probes the configured width again.
+	grantTTL = 2 * time.Minute
 )
+
+// grant is one observation of how many connections a site's server actually
+// handed over, with when it was seen. Both halves matter: the count keeps
+// the queue moving against a real limit, the timestamp keeps a momentary
+// refusal from becoming a permanent one.
+type grant struct {
+	n  int
+	at time.Time
+}
 
 type Dispatcher struct {
 	store   *queue.Store
@@ -69,7 +81,15 @@ type Dispatcher struct {
 	cancelledAt map[int64]time.Time
 	slots       map[int64]int // connections reserved per active transfer
 	perSite     map[int64]int
-	activeN     int
+	// granted is the connection ceiling a site's SERVER was last observed
+	// to enforce: set when a dial came back short, cleared when the site
+	// goes idle or when the observation goes stale. Without it,
+	// wait-for-full-width deadlocks against a server that will never grant
+	// the full width — the queue would sit idle for hours waiting on
+	// connections the server has already refused. A missing entry means
+	// "not observed", i.e. ask for the configured width.
+	granted map[int64]grant
+	activeN int
 
 	limMu       sync.Mutex
 	limiter     *rate.Limiter // nil = unthrottled
@@ -87,6 +107,7 @@ func New(store *queue.Store, sink events.Sink, factory Factory) *Dispatcher {
 		cancelledAt: make(map[int64]time.Time),
 		slots:       make(map[int64]int),
 		perSite:     make(map[int64]int),
+		granted:     make(map[int64]grant),
 	}
 }
 
@@ -205,7 +226,16 @@ func (d *Dispatcher) pump(ctx context.Context) {
 		siteDefault = defaultSiteCap
 	}
 	siteCaps := make(map[int64]int)
+	// Sites whose next transfer could not be admitted this pass. Filling the
+	// spare connections with whatever fits further down the queue would let a
+	// run of small files hold a wide one at the head of the line, and makes
+	// the order the queue shows a lie. One site running out of budget must
+	// not stall the others, so this is per site rather than a break.
+	blocked := make(map[int64]bool)
 	for _, t := range pending {
+		if blocked[t.SiteID] {
+			continue
+		}
 		siteCap, ok := siteCaps[t.SiteID]
 		if !ok {
 			siteCap = siteDefault
@@ -223,28 +253,14 @@ func (d *Dispatcher) pump(ctx context.Context) {
 		streams := d.streamsFor(t, siteCap)
 
 		d.mu.Lock()
-		if d.activeN+streams > globalCap || d.perSite[t.SiteID]+streams > siteCap {
-			// Take what is free rather than holding out for the full request.
-			// A 4-lane download must not sit behind a 3-lane upload just
-			// because 3+4 exceeds a cap of 6 — it runs on the spare lane and
-			// the engine plans to the clients it is actually given.
-			avail := globalCap - d.activeN
-			if free := siteCap - d.perSite[t.SiteID]; free < avail {
-				avail = free
-			}
-			switch {
-			case avail >= 1:
-				streams = avail
-			case d.activeN == 0 && d.perSite[t.SiteID] == 0:
-				// Caps smaller than one transfer's stream count: let it
-				// through alone rather than starving it forever.
-			default:
-				d.mu.Unlock()
-				continue
-			}
-		}
 		if _, running := d.cancels[t.ID]; running {
 			d.mu.Unlock()
+			continue
+		}
+		streams = d.clampToGranted(t.SiteID, streams)
+		if !d.fits(t.SiteID, streams, globalCap, siteCap) {
+			d.mu.Unlock()
+			blocked[t.SiteID] = true
 			continue
 		}
 		tctx, cancel := context.WithCancel(ctx)
@@ -268,6 +284,48 @@ func (d *Dispatcher) pump(ctx context.Context) {
 		d.running.Add(1)
 		go d.runTransfer(tctx, t, streams)
 	}
+}
+
+// clampToGranted lowers a request to what this site's server was last seen
+// to allow. Caller holds d.mu.
+//
+// Waiting for a full width only makes sense when the width will eventually
+// be free. When a server refuses the extra connections (the "granted 4/6"
+// line in the log), the shortfall is permanent, and a queue that holds out
+// for the configured width would leave most of the budget idle until the
+// one running transfer finished. Asking for what the server actually gives
+// runs those files concurrently instead.
+func (d *Dispatcher) clampToGranted(siteID int64, streams int) int {
+	g, ok := d.granted[siteID]
+	if !ok {
+		return streams
+	}
+	// A refusal is a snapshot, not a verdict. MaxStartups is momentary and
+	// per-source penalties expire, so an observation that is no longer fresh
+	// is dropped and the next transfer probes the configured width again —
+	// otherwise one unlucky dial would hold a site narrow for a whole
+	// overnight run.
+	if time.Since(g.at) > grantTTL {
+		delete(d.granted, siteID)
+		return streams
+	}
+	if g.n > 0 && streams > g.n {
+		return g.n
+	}
+	return streams
+}
+
+// fits reports whether a transfer's FULL connection request can be admitted
+// right now. Caller holds d.mu.
+//
+// A transfer waits for its full width rather than starting on whatever is
+// spare: running a 4-lane file on one leftover connection is how a queue of
+// large files ended up with every file crawling at one connection's speed
+// while Settings said 4 lanes. streamsFor has already clamped the request
+// to both caps, so a request that does not fit now always fits once the
+// running transfers drain — waiting can never become starving.
+func (d *Dispatcher) fits(siteID int64, streams, globalCap, siteCap int) bool {
+	return d.activeN+streams <= globalCap && d.perSite[siteID]+streams <= siteCap
 }
 
 // streamsFor decides how many connections a transfer gets: >1 for files past
@@ -294,6 +352,11 @@ func (d *Dispatcher) streamsFor(t queue.Transfer, siteCap int) int {
 		streams = maxChunkStreams
 	}
 	// A transfer can never reserve more connections than the caps allow.
+	// This clamp is also what makes pump's wait-for-full-width admission
+	// safe: a request that fits inside both caps always fits once the
+	// running transfers drain, so nothing can queue behind a demand that
+	// can never be met. It does mean a per-site budget below the lane
+	// count silently narrows Hyperlane, which Settings now says out loud.
 	globalCap := d.store.SettingInt("transfers.global_max", defaultGlobalCap)
 	if globalCap < 1 {
 		globalCap = defaultGlobalCap
@@ -361,6 +424,9 @@ func (d *Dispatcher) resize(t queue.Transfer, actual int) {
 		d.slots[t.ID] = actual
 		d.perSite[t.SiteID] -= diff
 		d.activeN -= diff
+		// The server just told us its real ceiling. Remember it so the
+		// rows behind this one ask for what they can actually get.
+		d.granted[t.SiteID] = grant{n: actual, at: time.Now()}
 	}
 	d.mu.Unlock()
 	d.Wake()
@@ -407,6 +473,13 @@ func (d *Dispatcher) release(t queue.Transfer) {
 		delete(d.slots, t.ID)
 		d.perSite[t.SiteID] -= slots
 		d.activeN -= slots
+		if d.perSite[t.SiteID] <= 0 {
+			// Idle site: drop both the counter and the observed ceiling, so
+			// the next transfer probes the configured width again rather
+			// than believing a limit that may have lifted.
+			delete(d.perSite, t.SiteID)
+			delete(d.granted, t.SiteID)
+		}
 	}
 	d.mu.Unlock()
 }
@@ -537,6 +610,19 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 	}
 
 	ranges, chunked := d.chunkPlan(t, clients, streams)
+	// A chunked transfer that is part way through must never be dropped onto
+	// the linear path just because the connections were not there this time:
+	// the fallback below deletes its .wschunk and its saved plan, which on
+	// this app's workload is tens of gigabytes of transferred bytes thrown
+	// away. A server that grants one connection where two were asked for is
+	// ordinary (the "granted 1/4" line in the log), so this is not rare.
+	// Requeue instead — capacity errors retry with backoff, and the plan is
+	// still there when the connections are.
+	if !chunked && streams >= 2 && len(clients) < 2 && d.hasChunkProgress(t.ID) {
+		d.finishWithError(ctx, t, fmt.Errorf(
+			"too many connections in use: a part-transferred file needs 2, the server granted %d", len(clients)))
+		return
+	}
 	// The two engines lay their partial files out differently (chunked is
 	// preallocated and sparse; linear is a growing prefix), so whichever
 	// runs must clear the other's leftovers — adopting the wrong one would
@@ -658,6 +744,25 @@ func (d *Dispatcher) runTransfer(ctx context.Context, t queue.Transfer, streams 
 		return
 	}
 	d.finishWithError(ctx, t, err)
+}
+
+// hasChunkProgress reports whether a saved chunk plan holds bytes that would
+// be lost by falling back to the linear path. A plan with nothing
+// transferred yet is not worth protecting — rebuilding it costs nothing.
+func (d *Dispatcher) hasChunkProgress(id int64) bool {
+	chunks, err := d.store.Chunks(id)
+	if err != nil {
+		// Unreadable plan: assume there is something to protect rather than
+		// deleting on the strength of a failed query.
+		log.Printf("dispatch: chunk progress %d: %v", id, err)
+		return true
+	}
+	for _, c := range chunks {
+		if c.BytesDone > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // chunkPlan builds (or resumes) the byte-range plan for a chunked transfer.

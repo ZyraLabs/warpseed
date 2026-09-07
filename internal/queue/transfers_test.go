@@ -307,3 +307,180 @@ func TestTransfersWindowUsesIndexes(t *testing.T) {
 		t.Fatalf("want 7 index walks (one per state arm), got %d: %+v", indexWalks, plan)
 	}
 }
+
+// TestRetryAndClearFailedAreBulk covers the two buttons a batch failure
+// needs: one drive unplug fails dozens of rows, and clearing them one at a
+// time was the reported pain.
+func TestRetryAndClearFailedAreBulk(t *testing.T) {
+	// Arrange — two failed rows, one pending and one completed alongside
+	// them, so a query that is too broad shows up as a wrong count.
+	s := openTestStore(t)
+	site := seedSite(t, s)
+	ids := make([]int64, 0, 4)
+	for i := 0; i < 4; i++ {
+		id, err := s.EnqueueTransfer(Transfer{
+			SiteID: site, Direction: "download",
+			Src: "/r/f", Dst: "/l/f", Size: 10,
+		})
+		if err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	boom := "disk gone"
+	for _, id := range ids[:2] {
+		if err := s.SetTransferState(id, "failed", &boom); err != nil {
+			t.Fatalf("fail: %v", err)
+		}
+	}
+	if err := s.SetTransferState(ids[3], "completed", nil); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	// Progress that resume must keep.
+	if err := s.UpdateTransferProgress(ids[0], 7); err != nil {
+		t.Fatalf("progress: %v", err)
+	}
+
+	// Act — the caller needs every failed row to clean up placeholders.
+	failed, err := s.FailedTransfers()
+	if err != nil {
+		t.Fatalf("failed transfers: %v", err)
+	}
+
+	// Assert
+	if len(failed) != 2 {
+		t.Fatalf("FailedTransfers returned %d rows, want 2", len(failed))
+	}
+
+	// Act
+	n, err := s.RetryFailed()
+	if err != nil {
+		t.Fatalf("retry failed: %v", err)
+	}
+
+	// Assert — both requeued from a clean slate, byte progress intact so
+	// they resume rather than re-download.
+	if n != 2 {
+		t.Fatalf("RetryFailed touched %d rows, want 2", n)
+	}
+	got, err := s.TransferByID(ids[0])
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if got.State != "pending" || got.Attempt != 0 || got.Error != nil || got.NextRetryAt != nil {
+		t.Fatalf("retried row = %+v, want pending with a cleared ladder", got)
+	}
+	if got.BytesDone != 7 {
+		t.Fatalf("retry lost byte progress: %d, want 7", got.BytesDone)
+	}
+	if done, _ := s.TransferByID(ids[3]); done.State != "completed" {
+		t.Fatalf("RetryFailed disturbed a completed row: %s", done.State)
+	}
+
+	// Arrange — fail them again to clear.
+	for _, id := range ids[:2] {
+		if err := s.SetTransferState(id, "failed", &boom); err != nil {
+			t.Fatalf("fail: %v", err)
+		}
+	}
+
+	// Act — clear only the first of the two, by id.
+	n, err = s.ClearFailedByID([]int64{ids[0]})
+	if err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+
+	// Assert — the id not named survives, so a confirmation for one row can
+	// never sweep up a row that failed while the dialog was open.
+	if n != 1 {
+		t.Fatalf("ClearFailedByID removed %d rows, want 1", n)
+	}
+	if _, err := s.TransferByID(ids[1]); err != nil {
+		t.Fatalf("unnamed failed row was removed: %v", err)
+	}
+
+	// Act — a row that is no longer failed must survive being named.
+	if err := s.SetTransferState(ids[1], "active", nil); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+	n, err = s.ClearFailedByID([]int64{ids[1]})
+	if err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+
+	// Assert
+	if n != 0 {
+		t.Fatalf("ClearFailedByID removed a non-failed row (%d)", n)
+	}
+	if err := s.SetTransferState(ids[1], "failed", &boom); err != nil {
+		t.Fatalf("re-fail: %v", err)
+	}
+	if n, err := s.ClearFailedByID([]int64{ids[1]}); err != nil || n != 1 {
+		t.Fatalf("ClearFailedByID = %d, %v; want 1, nil", n, err)
+	}
+	rest, err := s.Transfers(200)
+	if err != nil {
+		t.Fatalf("list: %v", err)
+	}
+	if len(rest) != 2 {
+		t.Fatalf("%d rows left, want 2 (one pending, one completed)", len(rest))
+	}
+	for _, r := range rest {
+		if r.State == "failed" {
+			t.Fatalf("failed row %d survived the clear", r.ID)
+		}
+	}
+}
+
+// TestOtherLiveTransfersForDst guards the placeholder that a re-queued copy
+// of the same file now owns: clearing the failed row must not delete it.
+func TestOtherLiveTransfersForDst(t *testing.T) {
+	// Arrange — the same destination queued twice, as re-dragging a folder
+	// after an overnight run produces.
+	s := openTestStore(t)
+	site := seedSite(t, s)
+	const dst = "/local/season/ep01.mkv"
+	oldID, err := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/r/ep01.mkv", Dst: dst, Size: 99})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	boom := "drive gone"
+	if err := s.SetTransferState(oldID, "failed", &boom); err != nil {
+		t.Fatalf("fail: %v", err)
+	}
+	newID, err := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/r/ep01.mkv", Dst: dst, Size: 99})
+	if err != nil {
+		t.Fatalf("re-enqueue: %v", err)
+	}
+
+	// Act & Assert — clearing only the failed row must see the pending one.
+	n, err := s.OtherLiveTransfersForDst([]int64{oldID}, dst)
+	if err != nil {
+		t.Fatalf("owners: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("owners = %d, want 1 (the re-queued copy)", n)
+	}
+
+	// Act & Assert — but when BOTH rows are in the batch being cleared,
+	// neither is a live owner: something must delete the placeholder, or it
+	// is stranded with no row pointing at it.
+	if n, err := s.OtherLiveTransfersForDst([]int64{oldID, newID}, dst); err != nil || n != 0 {
+		t.Fatalf("owners for the whole batch = %d, %v; want 0, nil", n, err)
+	}
+
+	// Arrange — once the duplicate has completed, its placeholder has been
+	// renamed away and no longer needs protecting.
+	if err := s.SetTransferState(newID, "completed", nil); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+
+	// Act & Assert
+	if n, err := s.OtherLiveTransfersForDst([]int64{oldID}, dst); err != nil || n != 0 {
+		t.Fatalf("owners after completion = %d, %v; want 0, nil", n, err)
+	}
+	// A different destination is never confused for this one.
+	if n, err := s.OtherLiveTransfersForDst([]int64{oldID}, "/local/season/ep02.mkv"); err != nil || n != 0 {
+		t.Fatalf("owners for another dst = %d, %v; want 0, nil", n, err)
+	}
+}

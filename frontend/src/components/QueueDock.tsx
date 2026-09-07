@@ -4,10 +4,12 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   cancelTransfer,
   clearDoneTransfers,
+  clearFailedTransfers,
   getSettings,
   on,
   pauseTransfer,
   resumeTransfer,
+  retryFailedTransfers,
   setSetting,
   type Transfer,
   type TransferProgress,
@@ -16,7 +18,9 @@ import {
 import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
 import { describeTransferError as describeError, formatSize } from "../lib/format";
 import { baseName } from "../lib/path";
+import { toast } from "../lib/toast";
 import { useUiStore } from "../store";
+import PromptDialog, { type PromptSpec } from "./PromptDialog";
 import {
   ArrowUp,
   Check,
@@ -107,6 +111,7 @@ const STATE_RANK: Record<string, number> = {
 export default function QueueDock() {
   const { style: colStyle, startResize, reset } = useColumnWidths(QUEUE_COLUMNS, "ui.queue_columns");
   const [streak, setStreak] = useState(false);
+  const [prompt, setPrompt] = useState<PromptSpec | null>(null);
   const transfers = useUiStore((s) => s.transfers);
   const progress = useUiStore((s) => s.progress);
   const open = useUiStore((s) => s.queueOpen);
@@ -320,6 +325,47 @@ export default function QueueDock() {
     }
     return { queued, failed, totalBytes };
   }, [transfers]);
+  // A drive pulled mid-run, or a server that spent an hour refusing
+  // connections, fails a whole batch at once. Both of these exist so the
+  // recovery is one click rather than one click per file.
+  const retryFailed = useCallback(() => {
+    void retryFailedTransfers()
+      .then((n) => toast("success", `Requeued ${n} failed transfer${n === 1 ? "" : "s"}`))
+      .catch((err: unknown) => toast("error", String(err)));
+  }, []);
+
+  const clearFailed = useCallback(() => {
+    // Snapshot the ids with the count: the backend clears these rows and no
+    // others, so what the dialog says is what happens even if more fail
+    // while it sits open.
+    const ids = transfers.filter((t) => t.state === "failed").map((t) => t.id);
+    const one = ids.length === 1;
+    setPrompt({
+      title: `Clear ${ids.length} failed transfer${one ? "" : "s"}?`,
+      body: one
+        ? "Its part-downloaded data is deleted too, so this file starts from the beginning if you queue it again. Finished files are untouched."
+        : "Their part-downloaded data is deleted too, so these files start from the beginning if you queue them again. Finished files are untouched.",
+      confirmLabel: "Clear failed",
+      danger: true,
+      onConfirm: () => {
+        void clearFailedTransfers(ids)
+          .then(({ cleared, kept }) => {
+            toast("success", `Cleared ${cleared} failed transfer${cleared === 1 ? "" : "s"}`);
+            // A kept row still has data somewhere — a remote placeholder on a
+            // site that is not connected, or a file we could not delete.
+            // Saying "cleared" and leaving it on screen would look like a bug.
+            if (kept > 0) {
+              toast(
+                "info",
+                `${kept} kept: their data could not be removed. Connect the site and try again.`,
+              );
+            }
+          })
+          .catch((err: unknown) => toast("error", String(err)));
+      },
+    });
+  }, [transfers]);
+
   const active = live.filter((t) => t.state === "active");
   const aggRate = active.reduce((s, t) => s + t.rate, 0);
   let doneBytes = 0;
@@ -353,9 +399,28 @@ export default function QueueDock() {
         <ChevronRight size={12} className={`dock__caret ${open ? "dock__caret--open" : ""}`} />
       </button>
 
+      <PromptDialog spec={prompt} onClose={() => setPrompt(null)} />
+
       {open && (
         <div className="dock__body" style={colStyle} ref={bodyRef}>
+          {/* The failure actions sit LEFT of the spacer on purpose. The app
+              grid stretches to its widest row, so at narrow windows the
+              right end of this bar is clipped by an ancestor — measured,
+              not assumed. Anything a user needs after a batch failure has
+              to stay on the reachable side. */}
           <div className="dock__header">
+            {counts.failed > 0 && (
+              <>
+                <button onClick={retryFailed} title="Requeue every failed transfer, resuming where each stopped">
+                  <Play size={12} />
+                  Retry failed
+                </button>
+                <button onClick={clearFailed} title="Remove every failed transfer and its part-downloaded data">
+                  <Warning size={12} />
+                  Clear failed
+                </button>
+              </>
+            )}
             <span className="grow" />
             <button onClick={reset} title="Restore default column widths">
               <Refresh size={12} />

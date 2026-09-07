@@ -85,6 +85,63 @@ export default function SettingsDialog() {
   // Legacy stored ids (v3 themes, "dark"/"light", "system") coerce to v4.
   const theme: ThemePref = coerceTheme(cfg["ui.theme"] ?? null);
   const bwMode = cfg["bw.mode"] || "off";
+
+  // Hyperlane draws its lanes from the same connection budget the transfer
+  // caps set, so a budget below the lane count silently narrows it. That
+  // clamp used to be invisible and cost a tester a week of confused
+  // testing; laneNote is how it says so.
+  //
+  // The cap mirrors dispatcher.streamsFor exactly, per-site override
+  // included: a site with its own "Max transfers" ignores the default, so
+  // warning off the default alone would both cry wolf and name a field
+  // that changes nothing. bestSiteCap is the most permissive site, so the
+  // note only fires when NO site can reach the configured lane count.
+  const num = (key: string, def: number) => {
+    const n = Number(cfg[key]);
+    return Number.isFinite(n) && n > 0 ? n : def;
+  };
+  const globalMax = num("transfers.global_max", 6);
+  const siteMax = num("transfers.site_max", 3);
+  const siteCaps = siteList.map((s) => (s.maxTransfers > 0 ? s.maxTransfers : siteMax));
+  const bestSiteCap = siteCaps.length > 0 ? Math.max(...siteCaps) : siteMax;
+  const laneCap = Math.min(globalMax, bestSiteCap);
+  // The inputs' own limits, so the note never suggests a value the backend
+  // would reject (transfers.site_max validates 1-8, global_max 1-16).
+  const MAX_SITE_CONN = 8;
+  const MAX_GLOBAL_CONN = 16;
+  const laneNote = (key: string, def: number) => {
+    const lanes = num(key, def);
+    if (lanes <= 1 || lanes <= laneCap) return null;
+    // Both budgets can bind at once; naming only one sends the user round
+    // the loop a second time.
+    const binding: string[] = [];
+    if (bestSiteCap < lanes) binding.push("Connections per site");
+    if (globalMax < lanes) binding.push("Connections, all sites");
+    const reachable = Math.min(lanes, MAX_SITE_CONN, MAX_GLOBAL_CONN);
+    return (
+      <p className="set-note set-note--warn">
+        Only {laneCap} of these {lanes} lanes will be used — {binding.join(" and ")}{" "}
+        {binding.length > 1 ? "are" : "is"} lower.{" "}
+        {reachable > laneCap ? (
+          <>
+            Raise {binding.length > 1 ? "both" : "it"} to {reachable} to get all {reachable}
+            {reachable < lanes
+              ? ` — the most one file can use, since Connections per site tops out at ${MAX_SITE_CONN}`
+              : ""}
+            .
+          </>
+        ) : (
+          <>
+            Connections per site tops out at {MAX_SITE_CONN}, so {laneCap} lanes is the most one
+            file can use — lower Lanes per file to {laneCap}.
+          </>
+        )}
+        {siteCaps.length > 1 && new Set(siteCaps).size > 1
+          ? " Sites with their own limit may get fewer."
+          : ""}
+      </p>
+    );
+  };
   const observedMax = Number(cfg["bw.observed_max"] || 0);
 
   const pickTheme = (t: ThemePref) => {
@@ -180,8 +237,14 @@ export default function SettingsDialog() {
 
         <section className="set-section">
           <h3>Transfers</h3>
+          <p className="set-note set-blurb">
+            These are connection budgets, not file counts. A Hyperlane file spends one
+            connection per lane, so 8 connections runs two 4-lane files at once — and a
+            budget below the lane count narrows Hyperlane instead of queueing. Files wait
+            for their full lane count rather than starting on a spare connection.
+          </p>
           <div className="set-row">
-            <label>Concurrent transfers (all sites)</label>
+            <label>Connections, all sites</label>
             <input
               type="number"
               min={1}
@@ -191,7 +254,7 @@ export default function SettingsDialog() {
             />
           </div>
           <div className="set-row">
-            <label>Per-site default</label>
+            <label>Connections per site</label>
             <input
               type="number"
               min={1}
@@ -200,6 +263,10 @@ export default function SettingsDialog() {
               onChange={(e) => put("transfers.site_max", e.target.value)}
             />
           </div>
+          <p className="set-note">
+            Per-site is the default; a site can override it in its own settings. Keep it at
+            or below what your server allows — refused connections show up in the log.
+          </p>
         </section>
 
         <section className="set-section">
@@ -222,6 +289,7 @@ export default function SettingsDialog() {
               <span className="set-note">connections (1 = off)</span>
             </span>
           </div>
+          {laneNote("transfers.chunk_streams", 4)}
           <div className="set-row">
             <label>Engage above</label>
             <span className="set-inline">
@@ -251,6 +319,7 @@ export default function SettingsDialog() {
               <span className="set-note">connections (1 = off)</span>
             </span>
           </div>
+          {laneNote("transfers.upload_chunk_streams", 3)}
           <div className="set-row">
             <label>Engage above</label>
             <span className="set-inline">

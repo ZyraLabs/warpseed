@@ -456,6 +456,16 @@
   font-size: var(--text-2xs);
   color: var(--text-faint);
 }
+/* Advisory, not an error: the setting is saved, it just cannot take full
+   effect at the current connection budget. */
+/* Scoped to .dialog to outrank `.dialog p`, which otherwise repaints this
+   in body-text grey and loses the whole point of the warning. */
+.dialog .set-note--warn {
+  color: var(--state-paused);
+  max-width: 46ch;
+  line-height: 1.5;
+  margin: calc(var(--sp-1) * -1) 0 var(--sp-2);
+}
 .set-path {
   font-family: var(--font-data);
   font-size: var(--text-2xs);

@@ -3,6 +3,7 @@ package dispatch
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 
@@ -260,5 +261,136 @@ func TestChunkPlanRejectsNonContiguousPlan(t *testing.T) {
 	// Act & Assert
 	if _, ok := d.chunkPlan(tr, twoClients(), 2); ok {
 		t.Fatal("chunkPlan accepted a gapped plan")
+	}
+}
+
+// TestAdmissionWaitsForFullLaneWidth pins the rule the 1.1.3 fix exists for:
+// a queue of large files must run one file at its configured lane count, not
+// every file on a single leftover connection.
+func TestAdmissionWaitsForFullLaneWidth(t *testing.T) {
+	// Arrange — a 4-lane download already running against a budget of 6.
+	d, _ := newTestDispatcher(t)
+	const siteID = int64(1)
+	d.activeN = 4
+	d.perSite[siteID] = 4
+
+	// Act & Assert — the next 4-lane file does not fit in the 2 spare
+	// connections, and must wait rather than start narrow.
+	if d.fits(siteID, 4, 6, 6) {
+		t.Fatal("4 lanes admitted with only 2 connections free")
+	}
+	// A single-lane transfer still uses the spare capacity.
+	if !d.fits(siteID, 1, 6, 6) {
+		t.Fatal("1 lane refused with 2 connections free")
+	}
+	// Once the running transfer drains, the full width fits.
+	d.activeN, d.perSite[siteID] = 0, 0
+	if !d.fits(siteID, 4, 6, 6) {
+		t.Fatal("4 lanes refused on an idle site")
+	}
+}
+
+// TestAdmissionAlwaysFitsAnIdleSite is the no-starvation guarantee that
+// makes wait-for-full-width safe: streamsFor clamps to both caps, so
+// whatever it returns must be admissible once everything else drains.
+func TestAdmissionAlwaysFitsAnIdleSite(t *testing.T) {
+	// Arrange
+	d, s := newTestDispatcher(t)
+	set(t, s, "transfers.chunk_min_mb", "256")
+	set(t, s, "transfers.chunk_streams", "16")
+	big := queue.Transfer{Engine: "sftpfast", Direction: "download", Size: 4096 * mb}
+
+	for _, caps := range []struct{ global, site int }{{1, 1}, {2, 1}, {6, 3}, {8, 8}, {6, 16}} {
+		// Act
+		set(t, s, "transfers.global_max", itoa(caps.global))
+		streams := d.streamsFor(big, caps.site)
+
+		// Assert
+		if !d.fits(2, streams, caps.global, caps.site) {
+			t.Fatalf("caps %d/%d: streamsFor asked for %d, which never fits",
+				caps.global, caps.site, streams)
+		}
+	}
+}
+
+func itoa(n int) string { return strconv.Itoa(n) }
+
+// TestGrantedCeilingKeepsTheQueueMoving is the counterweight to
+// wait-for-full-width: when the SERVER is the thing refusing connections,
+// holding out for the configured width would idle most of the budget for
+// the length of a 50 GB transfer.
+func TestGrantedCeilingKeepsTheQueueMoving(t *testing.T) {
+	// Arrange — T1 admitted at 3 of a site budget of 3, global 6.
+	d, _ := newTestDispatcher(t)
+	const siteID = int64(1)
+	const globalCap, siteCap = 6, 3
+	t1 := queue.Transfer{ID: 1, SiteID: siteID}
+	d.slots[t1.ID], d.perSite[siteID], d.activeN = 3, 3, 3
+
+	// Act — the server grants only one connection of the three.
+	d.resize(t1, 1)
+
+	// Assert — the two slots come back AND the ceiling is remembered.
+	if d.perSite[siteID] != 1 || d.activeN != 1 {
+		t.Fatalf("after resize perSite=%d activeN=%d, want 1 and 1", d.perSite[siteID], d.activeN)
+	}
+	if got := d.granted[siteID]; got.n != 1 {
+		t.Fatalf("granted ceiling = %d, want 1", got.n)
+	}
+
+	// Act — the next transfer asks for the configured 3.
+	streams := d.clampToGranted(siteID, 3)
+
+	// Assert — it asks for what the server actually gives, and runs now
+	// instead of waiting hours for a width that will never be free.
+	if streams != 1 {
+		t.Fatalf("clamped request = %d, want 1", streams)
+	}
+	if !d.fits(siteID, streams, globalCap, siteCap) {
+		t.Fatal("clamped request still does not fit: the queue would stall")
+	}
+
+	// Act — the site drains.
+	d.slots[t1.ID] = 1
+	d.release(t1)
+
+	// Assert — the ceiling is forgotten, so a limit that has lifted is
+	// re-probed rather than believed for the rest of the session.
+	if _, ok := d.granted[siteID]; ok {
+		t.Fatal("granted ceiling survived the site going idle")
+	}
+	if got := d.clampToGranted(siteID, 3); got != 3 {
+		t.Fatalf("request after idle = %d, want the configured 3", got)
+	}
+}
+
+// TestGrantedCeilingExpires stops one unlucky dial from holding a site at a
+// single lane for a whole overnight run: a busy site never goes idle, so the
+// idle reset alone would never fire.
+func TestGrantedCeilingExpires(t *testing.T) {
+	// Arrange — a ceiling observed longer ago than the TTL, on a site that
+	// has stayed busy throughout.
+	d, _ := newTestDispatcher(t)
+	const siteID = int64(1)
+	d.perSite[siteID], d.activeN = 1, 1
+	d.granted[siteID] = grant{n: 1, at: time.Now().Add(-grantTTL - time.Second)}
+
+	// Act
+	got := d.clampToGranted(siteID, 4)
+
+	// Assert — the stale observation is dropped, not believed.
+	if got != 4 {
+		t.Fatalf("stale ceiling still clamped request to %d, want 4", got)
+	}
+	if _, ok := d.granted[siteID]; ok {
+		t.Fatal("stale ceiling was left in the map")
+	}
+
+	// Arrange — a fresh observation is still honoured.
+	d.granted[siteID] = grant{n: 2, at: time.Now()}
+
+	// Act & Assert
+	if got := d.clampToGranted(siteID, 4); got != 2 {
+		t.Fatalf("fresh ceiling gave %d, want 2", got)
 	}
 }

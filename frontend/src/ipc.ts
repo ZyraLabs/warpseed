@@ -3,6 +3,8 @@
 import {
   CancelTransfer,
   ClearDoneTransfers,
+  ClearFailedTransfers,
+  RetryFailedTransfers,
   ConnectSite,
   DeleteLocal,
   DeleteRemote,
@@ -302,3 +304,14 @@ export const pauseTransfer = (id: number): Promise<void> => PauseTransfer(id);
 export const resumeTransfer = (id: number): Promise<void> => ResumeTransfer(id);
 export const cancelTransfer = (id: number): Promise<void> => CancelTransfer(id);
 export const clearDoneTransfers = (): Promise<void> => ClearDoneTransfers();
+/** Rows whose data could not be accounted for are KEPT, not cleared, so the
+    toast can say so rather than claiming a clean sweep. */
+export interface ClearResult {
+  cleared: number;
+  kept: number;
+}
+export const retryFailedTransfers = (): Promise<number> => RetryFailedTransfers();
+/** Takes the ids the user was shown: rows that fail while the confirmation
+    is open are not part of what they approved. */
+export const clearFailedTransfers = (ids: number[]): Promise<ClearResult> =>
+  ClearFailedTransfers(ids) as unknown as Promise<ClearResult>;

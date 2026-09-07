@@ -15,6 +15,8 @@ export function CancelTransfer(arg1:number):Promise<void>;
 
 export function ClearDoneTransfers():Promise<void>;
 
+export function ClearFailedTransfers(arg1:Array<number>):Promise<main.ClearResult>;
+
 export function ConnectSite(arg1:number):Promise<void>;
 
 export function DataLocation():Promise<main.DataInfo>;
@@ -64,6 +66,8 @@ export function RenameRemote(arg1:number,arg2:string,arg3:string,arg4:string):Pr
 export function ResolvePrompt(arg1:string,arg2:boolean):Promise<void>;
 
 export function ResumeTransfer(arg1:number):Promise<void>;
+
+export function RetryFailedTransfers():Promise<number>;
 
 export function SaveSite(arg1:queue.Site,arg2:string):Promise<queue.Site>;
 

@@ -189,6 +189,19 @@ still there and resume from the exact byte they reached.
 show a plain-language reason and a **retry** button. Completed rows stay
 for the session so you can audit them; **Clear done** purges them.
 
+When anything has failed, two more buttons appear at the left of the queue
+toolbar — one unplugged drive or one hour of a server refusing logins fails
+a whole batch at once, and neither should be a row-by-row cleanup:
+
+- **Retry failed** — requeues every failed transfer. Each one resumes from
+  the byte it reached, so nothing is re-downloaded.
+- **Clear failed** — removes them and deletes their part-downloaded data.
+  Files cleared this way start from the beginning if you queue them again;
+  finished files are never touched. A row whose data cannot be reached is
+  kept rather than deleted — a failed upload while the site is disconnected,
+  for instance — so nothing is ever left on a disk or a server with no queue
+  row pointing at it.
+
 The dock always shows everything in flight, plus up to 2,000 waiting rows
 (the ones next in line), the newest 500 failed rows and the newest 200
 finished rows. Queue a whole season folder and every row is there; the
@@ -268,11 +281,17 @@ Open with **Ctrl+,** or the gear icon.
 |---|---|
 | ![Cobalt](screenshots/theme-cobalt.png) | ![Iris](screenshots/theme-iris.png) |
 
-**Transfers**
-- *Concurrent transfers (all sites)* — how many files move at once across
-  every site (1–16, default 6).
-- *Per-site default* — connection cap per site (1–8, default 3). Sites can
-  override this individually.
+**Transfers** — these are connection budgets, not file counts. A Hyperlane
+file spends one connection per lane, so the budget decides how many files
+run at once: 8 connections runs two 4-lane files, and a budget below the
+lane count narrows Hyperlane rather than queueing.
+- *Connections, all sites* — total across every site (1–16, default 6).
+- *Connections per site* — the default per site (1–8, default 3). Sites can
+  override this individually. Keep it at or below what your server allows.
+
+A file waits for its full lane count rather than starting on a spare
+connection, so a queue of large files runs them one at a time at full
+width instead of all of them at one connection's speed.
 
 **Hyperlane · Downloads** and **Hyperlane · Uploads** — see
 [above](#hyperlane--multi-connection-transfers).
@@ -352,14 +371,20 @@ from Microsoft, then relaunch.
 
 **Transfers stall at one speed no matter what** — your provider caps each
 connection. Turn on Hyperlane (Settings → Hyperlane · Downloads → Lanes
-per file: 8) and raise the per-site connection cap. Uploads have their
+per file: 8) and raise *Connections per site* to at least that number. Uploads have their
 own lane count in Hyperlane · Uploads — raising the download one does
 nothing for them.
 
 **"Too many connections" / logins refused** — the provider limits
-simultaneous connections per IP. Lower *Per-site default* and both
-*Lanes per file* values so that lanes × concurrent transfers stays under
-the limit.
+simultaneous connections per IP. Lower *Connections per site* and both
+*Lanes per file* values to stay under the limit. The log records what the
+server actually granted ("site 1 granted 4/6 connections"), which is the
+quickest way to find your real ceiling.
+
+**Hyperlane says 8 lanes but transfers use fewer** — the lane count cannot
+exceed the connection budgets in Settings → Transfers; Settings says so
+under the lane field when it is being limited. Raise *Connections per site*
+(and *Connections, all sites*) to at least the lane count.
 
 **Host key changed** — warpseed refuses to connect on purpose. If your
 provider migrated servers they'll have announced it; confirm with them,

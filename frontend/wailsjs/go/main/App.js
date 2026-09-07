@@ -22,6 +22,10 @@ export function ClearDoneTransfers() {
   return window['go']['main']['App']['ClearDoneTransfers']();
 }
 
+export function ClearFailedTransfers(arg1) {
+  return window['go']['main']['App']['ClearFailedTransfers'](arg1);
+}
+
 export function ConnectSite(arg1) {
   return window['go']['main']['App']['ConnectSite'](arg1);
 }
@@ -120,6 +124,10 @@ export function ResolvePrompt(arg1, arg2) {
 
 export function ResumeTransfer(arg1) {
   return window['go']['main']['App']['ResumeTransfer'](arg1);
+}
+
+export function RetryFailedTransfers() {
+  return window['go']['main']['App']['RetryFailedTransfers']();
 }
 
 export function SaveSite(arg1, arg2) {

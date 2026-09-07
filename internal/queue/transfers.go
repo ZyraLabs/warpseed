@@ -238,6 +238,100 @@ func (s *Store) ScheduleRetry(id int64, nextRetryAt string, errMsg *string) erro
 	return nil
 }
 
+// FailedTransfers returns every failed row, uncapped: the caller deletes
+// their leftover placeholders, and a row missing from this list is a
+// .wspart nothing will ever clean up. The UI list is capped
+// (maxFailedRows); this is deliberately not.
+func (s *Store) FailedTransfers() ([]Transfer, error) {
+	rows, err := s.db.Query(
+		`SELECT ` + transferCols + ` FROM transfers WHERE state='failed' ORDER BY id ASC`)
+	if err != nil {
+		return nil, fmt.Errorf("failed transfers: %w", err)
+	}
+	defer rows.Close()
+	return collectTransfers(rows)
+}
+
+// RetryFailed requeues every failed row from a clean slate: a drive that
+// came back or a server that stopped refusing connections is a new attempt,
+// not a continuation of the ladder that gave up. The recorded byte progress
+// stays, so each one resumes from its .wspart rather than restarting.
+func (s *Store) RetryFailed() (int64, error) {
+	res, err := s.db.Exec(
+		`UPDATE transfers SET state='pending', attempt=0, next_retry_at=NULL,
+		 error=NULL, updated_at=? WHERE state='failed'`, nowUTC())
+	if err != nil {
+		return 0, fmt.Errorf("retry failed: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// ClearFailedByID removes the named rows, and only while they are still
+// failed. Taking explicit ids is what keeps the confirmation honest: the
+// user approved the rows they were shown, and a transfer that failed — or
+// was retried back into flight — between the dialog opening and the click
+// must not be swept up by it. Chunk rows go with them via the schema's
+// ON DELETE CASCADE; the placeholder files are the caller's job and are
+// gone before this is called.
+func (s *Store) ClearFailedByID(ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	args := make([]any, len(ids))
+	ph := make([]byte, 0, len(ids)*2)
+	for i, id := range ids {
+		args[i] = id
+		if i > 0 {
+			ph = append(ph, ',')
+		}
+		ph = append(ph, '?')
+	}
+	res, err := s.db.Exec(
+		`DELETE FROM transfers WHERE state='failed' AND id IN (`+string(ph)+`)`, args...)
+	if err != nil {
+		return 0, fmt.Errorf("clear failed: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// OtherLiveTransfersForDst counts rows that still own the placeholder files
+// at dst, ignoring every id in `going` — the rows the caller is about to
+// remove. A destination can legitimately be queued twice (re-dragging a
+// folder after an overnight run is the ordinary way it happens) and the
+// placeholder path is derived from dst alone, so deleting a failed row's
+// .wspart would silently reset a live duplicate to byte zero, or unlink a
+// file an in-flight transfer is writing.
+//
+// `going` must be the WHOLE batch, not just the row being examined. When
+// two rows of one batch share a destination they would otherwise each see
+// the other as a live owner, both decline to delete, and both rows would
+// then be removed — stranding the placeholder with nothing pointing at it,
+// which is the exact outcome this guard exists to prevent.
+//
+// Completed rows are excluded: their placeholder was renamed away on
+// success.
+func (s *Store) OtherLiveTransfersForDst(going []int64, dst string) (int, error) {
+	args := make([]any, 0, len(going)+1)
+	args = append(args, dst)
+	ph := make([]byte, 0, len(going)*2)
+	for i, id := range going {
+		if i > 0 {
+			ph = append(ph, ',')
+		}
+		ph = append(ph, '?')
+		args = append(args, id)
+	}
+	q := `SELECT COUNT(*) FROM transfers WHERE dst=? AND state<>'completed'`
+	if len(going) > 0 {
+		q += ` AND id NOT IN (` + string(ph) + `)`
+	}
+	var n int
+	if err := s.db.QueryRow(q, args...).Scan(&n); err != nil {
+		return 0, fmt.Errorf("transfers for dst: %w", err)
+	}
+	return n, nil
+}
+
 // ClearFinished removes completed and cancelled rows.
 func (s *Store) ClearFinished() (int64, error) {
 	res, err := s.db.Exec(`DELETE FROM transfers WHERE state IN ('completed','cancelled')`)

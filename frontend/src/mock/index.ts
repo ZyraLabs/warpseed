@@ -383,6 +383,27 @@ const App = {
     state.transfers = state.transfers.filter((t) => t.state !== "completed" && t.state !== "cancelled");
     emit("queue:changed", null);
   },
+  // Both mirror the real bindings: retry only requeues (the dispatcher
+  // admits them within the connection budget afterwards), and clear acts
+  // on the ids it was given, not on whatever is failed right now.
+  async RetryFailedTransfers() {
+    const failed = state.transfers.filter((t) => t.state === "failed");
+    for (const t of failed) {
+      t.attempt = 0;
+      t.error = null;
+      setState(t, "pending");
+    }
+    emit("queue:changed", null);
+    dispatchNext();
+    return failed.length;
+  },
+  async ClearFailedTransfers(ids: number[]) {
+    const want = new Set(ids);
+    const hit = state.transfers.filter((t) => t.state === "failed" && want.has(t.id));
+    state.transfers = state.transfers.filter((t) => !hit.includes(t));
+    emit("queue:changed", null);
+    return { cleared: hit.length, kept: 0 };
+  },
   async GetSettings() {
     await delay();
     return { ...state.settings };

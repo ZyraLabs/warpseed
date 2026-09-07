@@ -24,6 +24,7 @@ import {
   type FsEntry,
 } from "../ipc";
 import { formatSize, formatTime } from "../lib/format";
+import { toast } from "../lib/toast";
 import {
   isAtOrUnder,
   looksWindows,
@@ -53,9 +54,6 @@ import {
 } from "./Icon";
 import PromptDialog, { type PromptSpec } from "./PromptDialog";
 
-function toast(kind: "info" | "error" | "success", text: string) {
-  window.dispatchEvent(new CustomEvent("ws:toast", { detail: { kind, text } }));
-}
 
 /** Bound on how often a pane re-lists in response to filesystem events. */
 const FS_REFRESH_COALESCE_MS = 500;

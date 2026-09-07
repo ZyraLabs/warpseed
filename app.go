@@ -952,6 +952,131 @@ func (a *App) ClearDoneTransfers() error {
 	return err
 }
 
+// RetryFailedTransfers requeues every failed row at once. A drive that was
+// unplugged mid-run, or a server that spent an hour refusing connections,
+// fails a whole batch at a time; retrying them one button at a time is the
+// part users actually complained about. Byte progress is kept, so each one
+// resumes from its placeholder rather than starting over.
+func (a *App) RetryFailedTransfers() (int, error) {
+	if a.store == nil {
+		return 0, errNoStore
+	}
+	n, err := a.store.RetryFailed()
+	if err != nil {
+		return 0, err
+	}
+	a.sink.Emit("queue:changed", nil)
+	a.dispatcher.Wake()
+	return int(n), nil
+}
+
+// ClearResult reports what a bulk clear actually did. Kept rows are the
+// honest half: the UI promises the part-downloaded data goes with the row,
+// so a row whose placeholders could not be removed keeps its row rather
+// than leaving data on a disk or a server with nothing left pointing at it.
+type ClearResult struct {
+	Cleared int `json:"cleared"`
+	Kept    int `json:"kept"`
+}
+
+// ClearFailedTransfers removes the given failed rows AND the placeholders
+// they left behind. Deleting the row alone would strand a .wspart that is
+// now unreachable from the queue — on this app's workload that is tens of
+// gigabytes of invisible disk.
+//
+// It takes explicit ids because the user confirmed a count they were
+// shown: rows that failed while the dialog sat open are not part of that
+// consent, and the store re-checks each row is still failed before
+// deleting it. The destination file itself is never touched — only the
+// suffixed placeholders a transfer of ours created.
+func (a *App) ClearFailedTransfers(ids []int64) (ClearResult, error) {
+	var res ClearResult
+	if a.store == nil {
+		return res, errNoStore
+	}
+	failed, err := a.store.FailedTransfers()
+	if err != nil {
+		return res, err
+	}
+	want := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	// The whole batch, so two failed rows sharing a destination do not each
+	// mistake the other for a live owner and leave the placeholder behind.
+	going := make([]int64, 0, len(ids))
+	for _, t := range failed {
+		if want[t.ID] {
+			going = append(going, t.ID)
+		}
+	}
+	clear := make([]int64, 0, len(going))
+	for _, t := range failed {
+		if !want[t.ID] {
+			continue
+		}
+		if !a.removeParts(t, going) {
+			res.Kept++
+			continue
+		}
+		clear = append(clear, t.ID)
+	}
+	// Emit whatever happened, including on a failed delete: the placeholders
+	// are already gone by then and the rows on screen must not keep showing
+	// byte progress that no longer exists on disk.
+	defer a.sink.Emit("queue:changed", nil)
+	n, err := a.store.ClearFailedByID(clear)
+	res.Cleared = int(n)
+	return res, err
+}
+
+// removeParts deletes both placeholder kinds for one transfer, on whichever
+// side its destination lives, and reports whether the transfer's data is
+// now fully accounted for.
+//
+// It returns false — keep the row — in the two cases where deleting the row
+// would strand data: an upload whose site is not connected (its
+// placeholders are remote and unreachable), and any removal that fails for
+// a reason other than the file already being gone. It returns true without
+// deleting anything when another live row targets the same destination:
+// that row owns the placeholders now, so they are not stranded, and
+// removing them would reset a re-queued copy to byte zero or unlink a file
+// an in-flight transfer is still writing.
+func (a *App) removeParts(t queue.Transfer, going []int64) bool {
+	if n, err := a.store.OtherLiveTransfersForDst(going, t.Dst); err != nil {
+		log.Printf("clear failed: transfer %d: dst owners: %v", t.ID, err)
+		return false
+	} else if n > 0 {
+		applog.Debugf("clear failed: transfer %d: %d other row(s) still target %s, leaving placeholders", t.ID, n, t.Dst)
+		return true
+	}
+
+	suffixes := []string{sftpfast.PartSuffix, sftpfast.ChunkPartSuffix}
+	if t.Direction == "upload" {
+		c, err := a.session(t.SiteID)
+		if err != nil {
+			log.Printf("clear failed: transfer %d: site not connected, keeping row so its remote placeholders stay findable: %v", t.ID, err)
+			return false
+		}
+		ok := true
+		for _, s := range suffixes {
+			if rerr := c.RemoveRemote(t.Dst + s); rerr != nil && !errors.Is(rerr, fs.ErrNotExist) {
+				log.Printf("clear failed: remove remote %s: %v", t.Dst+s, rerr)
+				ok = false
+			}
+		}
+		return ok
+	}
+	ok := true
+	for _, s := range suffixes {
+		if rerr := os.Remove(t.Dst + s); rerr != nil && !os.IsNotExist(rerr) {
+			log.Printf("clear failed: remove %s: %v", t.Dst+s, rerr)
+			ok = false
+		}
+	}
+	return ok
+}
+
 // --- Bookmark bindings ---
 //
 // siteID 0 is the local filesystem, matching the storage convention.
