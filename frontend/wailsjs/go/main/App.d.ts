@@ -13,7 +13,7 @@ export function BookmarksFor(arg1:number):Promise<Array<queue.Bookmark>>;
 
 export function CancelTransfer(arg1:number):Promise<void>;
 
-export function ClearDoneTransfers():Promise<void>;
+export function ClearDoneTransfers():Promise<main.ClearResult>;
 
 export function ClearFailedTransfers(arg1:Array<number>):Promise<main.ClearResult>;
 

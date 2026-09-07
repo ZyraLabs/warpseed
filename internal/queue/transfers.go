@@ -70,7 +70,24 @@ func (s *Store) SetTransferSrcMtime(id, mtime int64) error {
 	return nil
 }
 
+// unfinishedStates are the rows that still intend to write their
+// destination. Failed, cancelled and completed rows are excluded on
+// purpose: re-queuing one of those is how a user retries, and it must keep
+// working.
+const unfinishedStates = `'pending','dispatched','active','paused'`
+
 // EnqueueTransfer inserts a pending row and returns its id.
+//
+// Re-queuing a transfer an unfinished row already describes — same source,
+// same destination, same direction, same site — returns that row's id
+// instead of adding a second one. Dragging the same folder across twice is
+// easy to do and used to produce two rows writing one placeholder path.
+//
+// The match is deliberately on the source too. Two DIFFERENT files landing
+// on one destination is a conflict, not a duplicate, and silently dropping
+// the second would be the queue lying about what it accepted; the
+// dispatcher's per-destination lock keeps them from running together until
+// there is an overwrite policy to resolve it properly (roadmap 1.1).
 func (s *Store) EnqueueTransfer(t Transfer) (int64, error) {
 	if t.SiteID == 0 || t.Src == "" || t.Dst == "" {
 		return 0, errors.New("transfer requires site, src and dst")
@@ -80,6 +97,17 @@ func (s *Store) EnqueueTransfer(t Transfer) (int64, error) {
 	}
 	if t.Direction == "" {
 		t.Direction = "download"
+	}
+	var existing int64
+	err := s.db.QueryRow(
+		`SELECT id FROM transfers
+		 WHERE dst=? AND src=? AND direction=? AND site_id=? AND state IN (`+unfinishedStates+`)
+		 ORDER BY id ASC LIMIT 1`, t.Dst, t.Src, t.Direction, t.SiteID).Scan(&existing)
+	if err == nil {
+		return existing, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("check duplicate transfer: %w", err)
 	}
 	now := nowUTC()
 	res, err := s.db.Exec(
@@ -201,6 +229,22 @@ func (s *Store) TransferByID(id int64) (Transfer, error) {
 	return t, nil
 }
 
+// ClaimPending moves a row to active only while it is still pending, and
+// reports whether it won. The dispatcher works from a list it read earlier,
+// so by the time it claims a row the user may have paused or cancelled it —
+// an unconditional write would silently resurrect a cancelled transfer and
+// hand a running goroutine to a row the user believes is stopped.
+func (s *Store) ClaimPending(id int64) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE transfers SET state='active', error=NULL, updated_at=?
+		 WHERE id=? AND state='pending'`, nowUTC(), id)
+	if err != nil {
+		return false, fmt.Errorf("claim transfer: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
 // SetTransferState transitions a row; errMsg is stored for 'failed'.
 func (s *Store) SetTransferState(id int64, state string, errMsg *string) error {
 	res, err := s.db.Exec(
@@ -243,10 +287,22 @@ func (s *Store) ScheduleRetry(id int64, nextRetryAt string, errMsg *string) erro
 // .wspart nothing will ever clean up. The UI list is capped
 // (maxFailedRows); this is deliberately not.
 func (s *Store) FailedTransfers() ([]Transfer, error) {
+	return s.transfersInState("failed")
+}
+
+// CancelledTransfers returns every cancelled row, uncapped, for the same
+// reason FailedTransfers is uncapped: clearing them deletes their
+// placeholders, and a row missing from this list is a file nothing will
+// ever clean up.
+func (s *Store) CancelledTransfers() ([]Transfer, error) {
+	return s.transfersInState("cancelled")
+}
+
+func (s *Store) transfersInState(state string) ([]Transfer, error) {
 	rows, err := s.db.Query(
-		`SELECT ` + transferCols + ` FROM transfers WHERE state='failed' ORDER BY id ASC`)
+		`SELECT `+transferCols+` FROM transfers WHERE state=? ORDER BY id ASC`, state)
 	if err != nil {
-		return nil, fmt.Errorf("failed transfers: %w", err)
+		return nil, fmt.Errorf("%s transfers: %w", state, err)
 	}
 	defer rows.Close()
 	return collectTransfers(rows)
@@ -332,11 +388,38 @@ func (s *Store) OtherLiveTransfersForDst(going []int64, dst string) (int, error)
 	return n, nil
 }
 
-// ClearFinished removes completed and cancelled rows.
-func (s *Store) ClearFinished() (int64, error) {
-	res, err := s.db.Exec(`DELETE FROM transfers WHERE state IN ('completed','cancelled')`)
+// ClearCompleted removes completed rows. A completed transfer renamed its
+// placeholder away on success, so there is nothing on disk to account for
+// and no reason to name them individually.
+func (s *Store) ClearCompleted() (int64, error) {
+	res, err := s.db.Exec(`DELETE FROM transfers WHERE state='completed'`)
 	if err != nil {
-		return 0, fmt.Errorf("clear finished: %w", err)
+		return 0, fmt.Errorf("clear completed: %w", err)
+	}
+	return res.RowsAffected()
+}
+
+// ClearCancelledByID removes the named cancelled rows. Cancelled rows can
+// still have a placeholder on disk or on a server, so the caller names only
+// the ones whose data it has actually accounted for — deleting the rest
+// would delete the only record that those files exist.
+func (s *Store) ClearCancelledByID(ids []int64) (int64, error) {
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	args := make([]any, len(ids))
+	ph := make([]byte, 0, len(ids)*2)
+	for i, id := range ids {
+		args[i] = id
+		if i > 0 {
+			ph = append(ph, ',')
+		}
+		ph = append(ph, '?')
+	}
+	res, err := s.db.Exec(
+		`DELETE FROM transfers WHERE state='cancelled' AND id IN (`+string(ph)+`)`, args...)
+	if err != nil {
+		return 0, fmt.Errorf("clear cancelled: %w", err)
 	}
 	return res.RowsAffected()
 }

@@ -303,7 +303,8 @@ export const transfersList = (): Promise<Transfer[]> =>
 export const pauseTransfer = (id: number): Promise<void> => PauseTransfer(id);
 export const resumeTransfer = (id: number): Promise<void> => ResumeTransfer(id);
 export const cancelTransfer = (id: number): Promise<void> => CancelTransfer(id);
-export const clearDoneTransfers = (): Promise<void> => ClearDoneTransfers();
+export const clearDoneTransfers = (): Promise<ClearResult> =>
+  ClearDoneTransfers() as unknown as Promise<ClearResult>;
 /** Rows whose data could not be accounted for are KEPT, not cleared, so the
     toast can say so rather than claiming a clean sweep. */
 export interface ClearResult {

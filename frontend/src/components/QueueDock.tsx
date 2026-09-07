@@ -366,6 +366,22 @@ export default function QueueDock() {
     });
   }, [transfers]);
 
+  // Cancelled rows can still have data on disk or on a server, so this can
+  // legitimately keep some back; saying "cleared" while rows stay on screen
+  // would read as a bug.
+  const clearDone = useCallback(() => {
+    void clearDoneTransfers()
+      .then(({ kept }) => {
+        if (kept > 0) {
+          toast(
+            "info",
+            `${kept} cancelled transfer${kept === 1 ? "" : "s"} kept: their data could not be removed. Connect the site and try again.`,
+          );
+        }
+      })
+      .catch((err: unknown) => toast("error", String(err)));
+  }, []);
+
   const active = live.filter((t) => t.state === "active");
   const aggRate = active.reduce((s, t) => s + t.rate, 0);
   let doneBytes = 0;
@@ -426,7 +442,7 @@ export default function QueueDock() {
               <Refresh size={12} />
               Reset columns
             </button>
-            <button onClick={() => void clearDoneTransfers()}>
+            <button onClick={clearDone}>
               <Close size={12} />
               Clear done
             </button>

@@ -102,6 +102,59 @@ func TestRecoverInterruptedDemotesTransientStates(t *testing.T) {
 	}
 }
 
+// TestRecoverInterruptedResetsTheRetryLadder — quitting the app is not a
+// transfer failure, so a row must not come back one hiccup away from giving
+// up, wearing an error from a run that is over.
+func TestRecoverInterruptedResetsTheRetryLadder(t *testing.T) {
+	// Arrange — an active row that had already burned two of its three
+	// attempts, with byte progress that recovery must preserve.
+	s := openTestStore(t)
+	site := seedSite(t, s)
+	id, err := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/r/big.mkv", Dst: "/l/big.mkv", Size: 5 << 30})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+	if err := s.UpdateTransferProgress(id, 3<<30); err != nil {
+		t.Fatalf("progress: %v", err)
+	}
+	boom := "connection reset"
+	if err := s.ScheduleRetry(id, "2026-08-01T00:00:05Z", &boom); err != nil {
+		t.Fatalf("retry 1: %v", err)
+	}
+	if err := s.ScheduleRetry(id, "2026-08-01T00:00:10Z", &boom); err != nil {
+		t.Fatalf("retry 2: %v", err)
+	}
+	if err := s.SetTransferState(id, "active", nil); err != nil {
+		t.Fatalf("activate: %v", err)
+	}
+
+	// Act — the app is killed and relaunches.
+	if _, err := s.RecoverInterrupted(); err != nil {
+		t.Fatalf("RecoverInterrupted: %v", err)
+	}
+
+	// Assert
+	got, err := s.TransferByID(id)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if got.State != "pending" {
+		t.Fatalf("state = %q, want pending", got.State)
+	}
+	if got.Attempt != 0 {
+		t.Fatalf("attempt = %d, want 0: a relaunch must not spend the retry budget", got.Attempt)
+	}
+	if got.Error != nil {
+		t.Fatalf("error = %q, want nil: the failure belonged to the previous run", *got.Error)
+	}
+	if got.NextRetryAt != nil {
+		t.Fatalf("nextRetryAt = %q, want nil: recovery should not sit behind an old backoff", *got.NextRetryAt)
+	}
+	if got.BytesDone != 3<<30 {
+		t.Fatalf("bytesDone = %d, want 3 GiB kept so it resumes rather than restarts", got.BytesDone)
+	}
+}
+
 func TestInvalidStateRejected(t *testing.T) {
 	// Arrange
 	s := openTestStore(t)

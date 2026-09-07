@@ -264,3 +264,99 @@ func TestDownloadChunksRejectsShortAssembly(t *testing.T) {
 		t.Fatal("short file was published")
 	}
 }
+
+// TestDownloadChunksRefusesResumeWhenPartContentChanged is the case the
+// size-only guard could never catch. The part is preallocated to the full
+// size before the first byte lands, so its length proves nothing: a folder
+// restored from a snapshot, or a part left by an attempt at a different file
+// of the same size, passes a size check and is then never re-fetched. The
+// result would be a published file of exactly the right length holding the
+// wrong bytes.
+func TestDownloadChunksRefusesResumeWhenPartContentChanged(t *testing.T) {
+	// Arrange — a part whose chunk 0 is complete on paper, but whose bytes
+	// belong to a different file of identical length.
+	c := testClients(t, 2)
+	srcDir, dstDir := t.TempDir(), t.TempDir()
+	src := filepath.Join(srcDir, "big.bin")
+	const size = 300 << 10
+	writeRandomFile(t, src, size)
+	dst := filepath.Join(dstDir, "big.bin")
+
+	ranges := plan(size, 2)
+	part := dst + ChunkPartSuffix
+	pf, err := os.OpenFile(part, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pf.Truncate(size); err != nil {
+		t.Fatal(err)
+	}
+	// Right length, wrong content.
+	imposter := bytes.Repeat([]byte{0xAB}, int(ranges[0].Length))
+	if _, err := pf.WriteAt(imposter, ranges[0].Offset); err != nil {
+		t.Fatal(err)
+	}
+	pf.Close()
+	ranges[0].Done = ranges[0].Length
+
+	// Act
+	err = DownloadChunks(context.Background(), c, src, dst, size, ranges, nil, nil)
+
+	// Assert — refused, and refused with the sentinel the dispatcher answers
+	// by resetting to zero rather than publishing.
+	if !errors.Is(err, ErrChunkStateLost) {
+		t.Fatalf("DownloadChunks = %v, want ErrChunkStateLost for a part whose bytes changed", err)
+	}
+}
+
+// TestDownloadChunksResumeSurvivesGenuineProgress is the other half: the
+// guard must not be so eager that it throws away real work. A part holding
+// exactly the bytes it claims has to resume, not restart.
+func TestDownloadChunksResumeSurvivesGenuineProgress(t *testing.T) {
+	// Arrange — chunk 1 genuinely complete, chunk 0 untouched.
+	c := testClients(t, 2)
+	srcDir, dstDir := t.TempDir(), t.TempDir()
+	src := filepath.Join(srcDir, "big.bin")
+	const size = 600 << 10
+	data := writeRandomFile(t, src, size)
+	dst := filepath.Join(dstDir, "big.bin")
+
+	ranges := plan(size, 2)
+	part := dst + ChunkPartSuffix
+	pf, err := os.OpenFile(part, os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pf.Truncate(size); err != nil {
+		t.Fatal(err)
+	}
+	r1 := ranges[1]
+	if _, err := pf.WriteAt(data[r1.Offset:r1.Offset+r1.Length], r1.Offset); err != nil {
+		t.Fatal(err)
+	}
+	pf.Close()
+	ranges[1].Done = r1.Length
+
+	var mu sync.Mutex
+	var fetched int64
+
+	// Act
+	err = DownloadChunks(context.Background(), c, src, dst, size, ranges,
+		func(_ int, delta int64) {
+			mu.Lock()
+			fetched += delta
+			mu.Unlock()
+		}, nil)
+
+	// Assert — the file is right and the completed half was not re-fetched.
+	if err != nil {
+		t.Fatalf("DownloadChunks: %v", err)
+	}
+	if !bytes.Equal(mustRead(t, dst), data) {
+		t.Fatal("resumed assembly mismatch")
+	}
+	if fetched != ranges[0].Length {
+		t.Fatalf("fetched %d bytes, want %d: verification must not discard real progress",
+			fetched, ranges[0].Length)
+	}
+}

@@ -943,13 +943,44 @@ func (a *App) ResumeTransfer(id int64) error { return a.dispatcher.Resume(id) }
 func (a *App) CancelTransfer(id int64) error { return a.dispatcher.Cancel(id) }
 
 // ClearDoneTransfers removes completed and cancelled rows.
-func (a *App) ClearDoneTransfers() error {
+//
+// Cancelled rows get the same placeholder sweep as failed ones, and the same
+// rule: a row whose data could not be accounted for is KEPT. A completed
+// transfer renamed its placeholder away on success and has nothing left, but
+// a cancelled one can still have leftovers — a cancel that could not reach
+// them at the time, or rows from an older build — and deleting the row is
+// deleting the only record that the file exists.
+func (a *App) ClearDoneTransfers() (ClearResult, error) {
+	var res ClearResult
 	if a.store == nil {
-		return errNoStore
+		return res, errNoStore
 	}
-	_, err := a.store.ClearFinished()
-	a.sink.Emit("queue:changed", nil)
-	return err
+	defer a.sink.Emit("queue:changed", nil)
+
+	cancelled, err := a.store.CancelledTransfers()
+	if err != nil {
+		return res, err
+	}
+	going := make([]int64, len(cancelled))
+	for i, t := range cancelled {
+		going[i] = t.ID
+	}
+	clear := make([]int64, 0, len(cancelled))
+	for _, t := range cancelled {
+		if !a.removeParts(t, going) {
+			res.Kept++
+			continue
+		}
+		clear = append(clear, t.ID)
+	}
+
+	done, err := a.store.ClearCompleted()
+	if err != nil {
+		return res, err
+	}
+	gone, err := a.store.ClearCancelledByID(clear)
+	res.Cleared = int(done + gone)
+	return res, err
 }
 
 // RetryFailedTransfers requeues every failed row at once. A drive that was

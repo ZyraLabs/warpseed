@@ -54,6 +54,10 @@ const (
 	// How long an observed server connection ceiling is trusted before the
 	// next transfer probes the configured width again.
 	grantTTL = 2 * time.Minute
+	// Budget for the one-off connection a cancelled upload needs to delete
+	// its remote placeholder. Short: this is cleanup, and the user has
+	// already moved on.
+	cleanupDialTimeout = 30 * time.Second
 )
 
 // grant is one observation of how many connections a site's server actually
@@ -89,7 +93,14 @@ type Dispatcher struct {
 	// connections the server has already refused. A missing entry means
 	// "not observed", i.e. ask for the configured width.
 	granted map[int64]grant
-	activeN int
+	// activeDst holds the destinations currently being written, so two queue
+	// rows aimed at the same file cannot run at once. The placeholder path
+	// is derived from the destination alone, so a second runner would
+	// interleave writes into the same .wspart — for downloads the bytes are
+	// identical and it merely wastes the transfer, but two uploads can have
+	// different sources and would splice two files together.
+	activeDst map[string]bool
+	activeN   int
 
 	limMu       sync.Mutex
 	limiter     *rate.Limiter // nil = unthrottled
@@ -108,6 +119,7 @@ func New(store *queue.Store, sink events.Sink, factory Factory) *Dispatcher {
 		slots:       make(map[int64]int),
 		perSite:     make(map[int64]int),
 		granted:     make(map[int64]grant),
+		activeDst:   make(map[string]bool),
 	}
 }
 
@@ -263,15 +275,34 @@ func (d *Dispatcher) pump(ctx context.Context) {
 			blocked[t.SiteID] = true
 			continue
 		}
+		if dk := dstKey(t); d.activeDst[dk] {
+			// Another row is already writing this exact file. Skip it rather
+			// than blocking the site: everything else in the queue is
+			// unaffected, and this one is picked up as soon as that runner
+			// finishes.
+			d.mu.Unlock()
+			continue
+		}
 		tctx, cancel := context.WithCancel(ctx)
 		d.cancels[t.ID] = cancel
+		d.activeDst[dstKey(t)] = true
 		d.slots[t.ID] = streams
 		d.perSite[t.SiteID] += streams
 		d.activeN += streams
 		d.mu.Unlock()
 
-		if err := d.store.SetTransferState(t.ID, "active", nil); err != nil {
+		// Claim only while the row is still pending. This list was read
+		// before the locks above were taken, so the user may have paused or
+		// cancelled this row in between; an unconditional write would
+		// resurrect a cancelled transfer and start moving bytes for it.
+		won, err := d.store.ClaimPending(t.ID)
+		if err != nil {
 			log.Printf("dispatch: claim %d: %v", t.ID, err)
+			d.release(t)
+			continue
+		}
+		if !won {
+			applog.Debugf("dispatch: transfer %d: no longer pending, skipping claim", t.ID)
 			d.release(t)
 			continue
 		}
@@ -382,6 +413,16 @@ func (d *Dispatcher) streamsFor(t queue.Transfer, siteCap int) int {
 	return streams
 }
 
+// dstKey identifies the file a transfer writes. An upload's destination is
+// remote, so it is only unique within its site; a download's is a local
+// path, unique across all of them.
+func dstKey(t queue.Transfer) string {
+	if t.Direction == "upload" {
+		return fmt.Sprintf("%d:%s", t.SiteID, t.Dst)
+	}
+	return "local:" + t.Dst
+}
+
 // parentDir returns the containing directory of a transfer destination,
 // using the separator convention of the side it lives on.
 func parentDir(dst string, remote bool) string {
@@ -480,6 +521,7 @@ func (d *Dispatcher) release(t queue.Transfer) {
 		delete(d.cancels, t.ID)
 		delete(d.cancelledAt, t.ID)
 		delete(d.slots, t.ID)
+		delete(d.activeDst, dstKey(t))
 		d.perSite[t.SiteID] -= slots
 		d.activeN -= slots
 		if d.perSite[t.SiteID] <= 0 {
@@ -855,13 +897,21 @@ func (d *Dispatcher) chunkPlan(t queue.Transfer, clients []*sftpfast.Client, str
 }
 
 // finishWithError applies pause/cancel intent (already written to the DB by
-// the control methods) or the retry ladder.
+// the control methods) or the retry ladder. c is this transfer's connection
+// where one was opened, so a cancelled upload can still reach its remote
+// placeholder; nil when the dial itself failed.
 func (d *Dispatcher) finishWithError(ctx context.Context, t queue.Transfer, err error) {
 	if ctx.Err() != nil {
-		// Pause/Cancel wrote the desired terminal state before cancelling;
-		// the .wspart stays on disk so resume continues at the same offset.
+		// Pause/Cancel wrote the desired terminal state before cancelling.
+		// Paused keeps its .wspart so resume continues at the same offset;
+		// cancelled does not, because nothing is coming back for it.
 		if cur, gerr := d.store.TransferByID(t.ID); gerr == nil &&
 			(cur.State == "paused" || cur.State == "cancelled") {
+			if cur.State == "cancelled" {
+				// Safe here and nowhere earlier: the engine has returned, so
+				// nothing is still writing to the placeholders.
+				d.discardPartials(t)
+			}
 			d.emitStateSrc(t.ID, t.Src, cur.State, "")
 			return
 		}
@@ -906,12 +956,84 @@ func (d *Dispatcher) Resume(id int64) error {
 	return nil
 }
 
+// discardPartials throws away everything a cancelled transfer left behind:
+// both placeholder kinds, the saved chunk plan and the byte count.
+//
+// Cancel is not Pause. Nothing is coming back for these bytes, and a
+// cancelled 50 GB chunked upload otherwise leaves a full-size .wschunk on
+// the seedbox — sparse on the filesystem, but seedbox quotas are billed on
+// apparent size, so the user pays for a file they cancelled.
+//
+// It re-reads the row and does nothing unless it is still cancelled. The
+// caller's view can be stale by the time this runs: pump claims from a list
+// it read earlier and rewrites the row to active, so a cancel that lost that
+// race would otherwise delete the placeholders of a transfer that is
+// starting up. Deleting bytes is not something to do on a stale read.
+//
+// The placeholder path is derived from the destination alone, so a second
+// queue row aimed at the same destination owns these files too; deleting
+// them would reset that row to zero or unlink a file it is writing. When one
+// exists, the files stay and only this row's bookkeeping is cleared.
+func (d *Dispatcher) discardPartials(t queue.Transfer) {
+	cur, err := d.store.TransferByID(t.ID)
+	if err != nil || cur.State != "cancelled" {
+		applog.Debugf("dispatch: cancel %d: no longer cancelled (%v), leaving its data alone", t.ID, err)
+		return
+	}
+	if n, err := d.store.OtherLiveTransfersForDst([]int64{t.ID}, t.Dst); err != nil {
+		log.Printf("dispatch: cancel %d: dst owners: %v", t.ID, err)
+		return
+	} else if n > 0 {
+		applog.Debugf("dispatch: cancel %d: %d other row(s) still target %s, leaving placeholders", t.ID, n, t.Dst)
+		return
+	}
+
+	if t.Direction == "upload" {
+		// The placeholders are on the server, and this transfer's own
+		// connections are already gone: cancelling closes them, which is the
+		// only reliable way to unblock a copy stuck inside pkg/sftp. So the
+		// cleanup dials its own, briefly.
+		ctx, cancel := context.WithTimeout(context.Background(), cleanupDialTimeout)
+		defer cancel()
+		cs, derr := d.factory(ctx, t.SiteID, 1)
+		if derr != nil || len(cs) == 0 {
+			log.Printf("dispatch: cancel %d: no connection to remove remote placeholders: %v", t.ID, derr)
+			return
+		}
+		defer cs[0].Close()
+		d.removeTransferPart(t, cs[0], sftpfast.PartSuffix)
+		d.removeTransferPart(t, cs[0], sftpfast.ChunkPartSuffix)
+	} else {
+		d.removeTransferPart(t, nil, sftpfast.PartSuffix)
+		d.removeTransferPart(t, nil, sftpfast.ChunkPartSuffix)
+	}
+
+	if err := d.store.DeleteChunks(t.ID); err != nil {
+		log.Printf("dispatch: cancel %d: clear chunk plan: %v", t.ID, err)
+	}
+	if err := d.store.UpdateTransferProgress(t.ID, 0); err != nil {
+		log.Printf("dispatch: cancel %d: reset progress: %v", t.ID, err)
+	}
+	d.sink.Emit("transfer:progress", map[string]any{"id": t.ID, "bytes": int64(0), "size": t.Size})
+}
+
 // Cancel aborts and marks cancelled.
 func (d *Dispatcher) Cancel(id int64) error {
 	if err := d.store.SetTransferState(id, "cancelled", nil); err != nil {
 		return err
 	}
+	d.mu.Lock()
+	_, running := d.cancels[id]
+	d.mu.Unlock()
 	d.cancelIfRunning(id)
+	if !running {
+		// A queued or paused row has no goroutine to do this on its way out,
+		// and nothing is writing, so its leftovers go now. A running one is
+		// handled in finishWithError, where its connections are still open.
+		if t, err := d.store.TransferByID(id); err == nil {
+			d.discardPartials(t)
+		}
+	}
 	d.emitState(id, "cancelled", "")
 	return nil
 }

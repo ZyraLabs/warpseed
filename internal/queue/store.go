@@ -109,9 +109,17 @@ func (s *Store) migrate() error {
 // RecoverInterrupted demotes rows left in transient states by a crash or kill
 // back to pending so the dispatcher re-runs them (approved plan: crash
 // recovery on startup; resume semantics arrive with the engines).
+//
+// It resets the retry ladder as well as the state. Closing the app is not a
+// transfer failure: a row that had already used two of its three attempts
+// before you quit would otherwise come back with one attempt left and a
+// stale error message attached, and give up on its first genuine hiccup of
+// the new run. Byte progress is untouched, so recovery still resumes rather
+// than restarts.
 func (s *Store) RecoverInterrupted() (int64, error) {
 	res, err := s.db.Exec(`UPDATE transfers
-		SET state='pending', updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
+		SET state='pending', attempt=0, next_retry_at=NULL, error=NULL,
+		    updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
 		WHERE state IN ('dispatched','active')`)
 	if err != nil {
 		return 0, fmt.Errorf("recover interrupted transfers: %w", err)

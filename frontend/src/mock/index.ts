@@ -380,8 +380,12 @@ const App = {
     }
   },
   async ClearDoneTransfers() {
+    const n = state.transfers.filter(
+      (t) => t.state === "completed" || t.state === "cancelled",
+    ).length;
     state.transfers = state.transfers.filter((t) => t.state !== "completed" && t.state !== "cancelled");
     emit("queue:changed", null);
+    return { cleared: n, kept: 0 };
   },
   // Both mirror the real bindings: retry only requeues (the dispatcher
   // admits them within the connection budget afterwards), and clear acts

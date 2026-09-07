@@ -1,6 +1,7 @@
 package queue
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -68,7 +69,7 @@ func TestStateTransitionsAndClear(t *testing.T) {
 	if err := s.SetTransferState(b, "failed", &msg); err != nil {
 		t.Fatal(err)
 	}
-	n, err := s.ClearFinished()
+	n, err := s.ClearCompleted()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -119,11 +120,11 @@ func TestTransfersKeepsLiveRowsBeyondWindow(t *testing.T) {
 	}
 	var pending, finished []int64
 	for i := 0; i < 30; i++ {
-		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/p", Dst: "/l/p"})
+		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: fmt.Sprintf("/p%d", i), Dst: fmt.Sprintf("/l/p%d", i)})
 		pending = append(pending, id)
 	}
 	for i := 0; i < 10; i++ {
-		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/d", Dst: "/l/d"})
+		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: fmt.Sprintf("/d%d", i), Dst: fmt.Sprintf("/l/d%d", i)})
 		if err := s.SetTransferState(id, "completed", nil); err != nil {
 			t.Fatal(err)
 		}
@@ -218,7 +219,7 @@ func TestTransfersFailedRowsDoNotEvictPending(t *testing.T) {
 	msg := "boom"
 	var failed []int64
 	for i := 0; i < 6; i++ {
-		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/f", Dst: "/l/f"})
+		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: fmt.Sprintf("/f%d", i), Dst: fmt.Sprintf("/l/f%d", i)})
 		if err := s.SetTransferState(id, "failed", &msg); err != nil {
 			t.Fatal(err)
 		}
@@ -226,7 +227,7 @@ func TestTransfersFailedRowsDoNotEvictPending(t *testing.T) {
 	}
 	var pending []int64
 	for i := 0; i < 3; i++ {
-		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/p", Dst: "/l/p"})
+		id, _ := s.EnqueueTransfer(Transfer{SiteID: site, Src: fmt.Sprintf("/pp%d", i), Dst: fmt.Sprintf("/l/pp%d", i)})
 		pending = append(pending, id)
 	}
 
@@ -320,7 +321,7 @@ func TestRetryAndClearFailedAreBulk(t *testing.T) {
 	for i := 0; i < 4; i++ {
 		id, err := s.EnqueueTransfer(Transfer{
 			SiteID: site, Direction: "download",
-			Src: "/r/f", Dst: "/l/f", Size: 10,
+			Src: fmt.Sprintf("/r/f%d", i), Dst: fmt.Sprintf("/l/f%d", i), Size: 10,
 		})
 		if err != nil {
 			t.Fatalf("enqueue: %v", err)
@@ -482,5 +483,138 @@ func TestOtherLiveTransfersForDst(t *testing.T) {
 	// A different destination is never confused for this one.
 	if n, err := s.OtherLiveTransfersForDst([]int64{oldID}, "/local/season/ep02.mkv"); err != nil || n != 0 {
 		t.Fatalf("owners for another dst = %d, %v; want 0, nil", n, err)
+	}
+}
+
+// TestEnqueueIsIdempotentForAnUnfinishedRow — dragging the same folder
+// across twice used to leave two rows writing one placeholder path.
+func TestEnqueueIsIdempotentForAnUnfinishedRow(t *testing.T) {
+	// Arrange
+	s := openTestStore(t)
+	site := seedSite(t, s)
+	tr := Transfer{SiteID: site, Direction: "download", Src: "/r/ep01.mkv", Dst: "/l/ep01.mkv", Size: 42}
+	first, err := s.EnqueueTransfer(tr)
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	// Act — the same drag again.
+	again, err := s.EnqueueTransfer(tr)
+	if err != nil {
+		t.Fatalf("re-enqueue: %v", err)
+	}
+
+	// Assert — the caller gets the row that already exists, not a second one.
+	if again != first {
+		t.Fatalf("second enqueue made row %d, want the existing %d", again, first)
+	}
+
+	// Act & Assert — a DIFFERENT source landing on the same destination is a
+	// conflict, not a duplicate. Dropping it would be the queue lying about
+	// what it accepted.
+	other, err := s.EnqueueTransfer(Transfer{
+		SiteID: site, Direction: "download", Src: "/r/other.mkv", Dst: "/l/ep01.mkv", Size: 42})
+	if err != nil {
+		t.Fatalf("conflicting enqueue: %v", err)
+	}
+	if other == first {
+		t.Fatal("a different source was swallowed as a duplicate")
+	}
+
+	// Act & Assert — once the row is out of the running, re-queuing must work
+	// again: that is how a user retries.
+	if err := s.SetTransferState(first, "cancelled", nil); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+	retried, err := s.EnqueueTransfer(tr)
+	if err != nil {
+		t.Fatalf("retry enqueue: %v", err)
+	}
+	if retried == first {
+		t.Fatal("re-queuing after cancel returned the dead row instead of a fresh one")
+	}
+}
+
+// TestClaimPendingRefusesARowTheUserStopped — the dispatcher claims from a
+// list it read earlier, so a row can be cancelled in between. An
+// unconditional write would resurrect it and start moving bytes for a
+// transfer the user believes is stopped.
+func TestClaimPendingRefusesARowTheUserStopped(t *testing.T) {
+	// Arrange
+	s := openTestStore(t)
+	site := seedSite(t, s)
+	id, err := s.EnqueueTransfer(Transfer{SiteID: site, Src: "/r/a", Dst: "/l/a"})
+	if err != nil {
+		t.Fatalf("enqueue: %v", err)
+	}
+
+	// Act & Assert — a pending row is claimable exactly once.
+	won, err := s.ClaimPending(id)
+	if err != nil || !won {
+		t.Fatalf("ClaimPending = %v, %v; want true, nil", won, err)
+	}
+	if won, _ := s.ClaimPending(id); won {
+		t.Fatal("an already-active row was claimed a second time")
+	}
+
+	// Arrange — the user cancels it.
+	if err := s.SetTransferState(id, "cancelled", nil); err != nil {
+		t.Fatalf("cancel: %v", err)
+	}
+
+	// Act & Assert — the claim must lose, and must not rewrite the state.
+	if won, _ := s.ClaimPending(id); won {
+		t.Fatal("a cancelled row was claimed")
+	}
+	got, err := s.TransferByID(id)
+	if err != nil {
+		t.Fatalf("read back: %v", err)
+	}
+	if got.State != "cancelled" {
+		t.Fatalf("state = %q, want cancelled: a lost claim must not resurrect the row", got.State)
+	}
+}
+
+// TestClearCancelledOnlyRemovesNamedRows — clear-done must delete only the
+// cancelled rows whose files were actually accounted for; the rest keep
+// their row, which is the only record the file exists.
+func TestClearCancelledOnlyRemovesNamedRows(t *testing.T) {
+	// Arrange — two cancelled rows and one completed.
+	s := openTestStore(t)
+	site := seedSite(t, s)
+	var ids []int64
+	for i := 0; i < 3; i++ {
+		id, err := s.EnqueueTransfer(Transfer{
+			SiteID: site, Src: fmt.Sprintf("/r/%d", i), Dst: fmt.Sprintf("/l/%d", i)})
+		if err != nil {
+			t.Fatalf("enqueue: %v", err)
+		}
+		ids = append(ids, id)
+	}
+	for _, id := range ids[:2] {
+		if err := s.SetTransferState(id, "cancelled", nil); err != nil {
+			t.Fatalf("cancel: %v", err)
+		}
+	}
+	if err := s.SetTransferState(ids[2], "completed", nil); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+
+	// Act — only the first cancelled row's data could be removed.
+	gone, err := s.ClearCancelledByID([]int64{ids[0]})
+	if err != nil {
+		t.Fatalf("clear cancelled: %v", err)
+	}
+	done, err := s.ClearCompleted()
+	if err != nil {
+		t.Fatalf("clear completed: %v", err)
+	}
+
+	// Assert
+	if gone != 1 || done != 1 {
+		t.Fatalf("removed %d cancelled and %d completed, want 1 and 1", gone, done)
+	}
+	if _, err := s.TransferByID(ids[1]); err != nil {
+		t.Fatalf("the unnamed cancelled row was deleted, stranding its file: %v", err)
 	}
 }

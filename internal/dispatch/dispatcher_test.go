@@ -409,3 +409,27 @@ func TestGrantedCeilingExpires(t *testing.T) {
 		t.Fatalf("chunked request clamped to %d, want a floor of 2", got)
 	}
 }
+
+// TestDstKeySeparatesSitesAndDirections — the per-destination lock is only
+// as good as its key. An upload's destination is remote and unique only
+// within its site; a download's is a local path.
+func TestDstKeySeparatesSitesAndDirections(t *testing.T) {
+	up1 := queue.Transfer{SiteID: 1, Direction: "upload", Dst: "/seed/a.mkv"}
+	up2 := queue.Transfer{SiteID: 2, Direction: "upload", Dst: "/seed/a.mkv"}
+	down := queue.Transfer{SiteID: 1, Direction: "download", Dst: "/seed/a.mkv"}
+
+	if dstKey(up1) == dstKey(up2) {
+		t.Fatal("the same remote path on two different servers shares a key")
+	}
+	if dstKey(up1) == dstKey(down) {
+		t.Fatal("a remote destination collides with a local one")
+	}
+	if dstKey(up1) != dstKey(queue.Transfer{SiteID: 1, Direction: "upload", Dst: "/seed/a.mkv"}) {
+		t.Fatal("the same destination does not produce a stable key")
+	}
+	// Downloads from different sites to one local path MUST collide: they
+	// write the same file.
+	if dstKey(down) != dstKey(queue.Transfer{SiteID: 9, Direction: "download", Dst: "/seed/a.mkv"}) {
+		t.Fatal("two downloads onto one local path were treated as separate files")
+	}
+}

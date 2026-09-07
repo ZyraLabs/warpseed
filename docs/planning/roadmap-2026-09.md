@@ -13,14 +13,18 @@ Legend: **[S]** small (under an hour) · **[M]** medium (a few hours) ·
 
 These can lose or waste a user's data. Nothing else ships first.
 
+**Status:** 1.2 shipped in 1.1.3; 1.3–1.6 shipped in 1.1.4. **1.1 is all that
+remains**, and it is the one with a user-facing policy to design rather than a
+defect to close.
+
 | # | Item | Size | Why it matters |
 |---|---|---|---|
 | 1.1 | **Overwrite/conflict policy** | M | Downloading a file you already have silently replaces it, *after* re-transferring the whole thing. No prompt, no check (`download.go:106`). User-specified rules: newer+larger → overwrite, smaller → ask, older → ask, configurable, with skip/overwrite/rename and apply-to-all. |
 | 1.2 | ~~**Stop discarding a chunk plan on a one-connection run**~~ | S | **Done in 1.1.3.** A plan with real progress now requeues as a capacity error instead of falling to the linear path, and the connection ceiling never narrows a chunk-eligible transfer below 2 lanes (which would have looked like a deliberate setting and slipped past the guard). Still discarded, correctly, when the plan is invalid: size/mtime mismatch, or the user setting lanes to 1. |
-| 1.3 | **Per-destination in-flight lock** | S | Two queue rows with the same destination compute the same placeholder path and interleave writes. Benign for downloads (identical bytes); for uploads the sources can differ. Add a `siteID+Dst` lock plus a duplicate-Dst check in `EnqueueTransfer`. *Partly mitigated in 1.1.3:* "Clear failed" no longer deletes a placeholder another queued row still owns (`OtherLiveTransfersForDst`), but nothing yet stops the two rows running together. |
-| 1.4 | **Clear `attempt`/`error` in `RecoverInterrupted`** | S | A row killed mid-transfer at attempt 2 gets zero retries on its next genuine failure (`maxAttempts` is 3) and carries a stale error into a fresh run. Closing the app is not a transfer failure. |
-| 1.5 | **Clean up placeholders on cancel** | S | Cancel sets state and cancels the context but removes nothing. A cancelled 50 GB chunked upload leaves a full-size `.wschunk` on the seedbox — sparse on ext4/XFS, but seedbox quotas are usually billed on *apparent* size. Same hole in `ClearFinished`, which deletes cancelled rows without touching their placeholders — the queue record goes and the file stays. 1.1.3 fixed this for *failed* rows only (`ClearFailedTransfers`); reuse that path for cancel and for clear-done. |
-| 1.6 | **Strengthen the chunked download resume guard** | M | Downloads check size only, which preallocation makes near-vacuous by the code's own admission (`chunked.go:120-122`). Uploads already do head/tail byte comparison. Bring downloads up to the same bar. |
+| 1.3 | ~~**Per-destination in-flight lock**~~ | S | **Done in 1.1.4.** `activeDst` keyed by site+path for uploads and by local path for downloads stops two rows writing one placeholder; `EnqueueTransfer` returns the existing row for an exact re-queue instead of adding a second. A *different* source aimed at the same destination is still accepted — that is a conflict for 1.1 to resolve, not a duplicate to swallow. |
+| 1.4 | ~~**Clear `attempt`/`error` in `RecoverInterrupted`**~~ | S | **Done in 1.1.4.** Recovery resets `attempt`, `error` and `next_retry_at`; byte progress is untouched, so it still resumes rather than restarts. |
+| 1.5 | ~~**Clean up placeholders on cancel**~~ | S | **Done in 1.1.4.** Cancel discards both placeholder kinds, the chunk plan and the byte count — for a running transfer once the engine has stopped but its connections are still open, for a queued or paused one immediately. `ClearDoneTransfers` sweeps cancelled rows the same way, so the row is never deleted while its file survives. Placeholders are left alone when another live row targets the same destination. |
+| 1.6 | ~~**Strengthen the chunked download resume guard**~~ | M | **Done in 1.1.4.** `verifyResumableLocalPart` reads back a 256 KiB window of each claimed range from the server and compares it against the part, mirroring the upload path. The size check alone was vacuous — preallocation guarantees it — so a snapshot restore or a part from a different file of the same length would have been published with the right length and the wrong bytes. |
 
 ## Phase 2 — Things you have already asked for
 

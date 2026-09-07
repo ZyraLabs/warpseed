@@ -180,7 +180,9 @@ The queue dock lives at the bottom of the window and is never hidden. Even
 collapsed it shows aggregate speed and counts; click it to expand.
 
 Each row shows filename, route, progress, speed and ETA, and has
-**pause / resume** and **cancel** buttons. Items from different sites
+**pause / resume** and **cancel** buttons. Pause keeps everything so the
+transfer continues from the same byte; cancel throws the part-transferred
+data away, on your machine and on the server. Items from different sites
 coexist. The queue is persisted to disk, so closing warpseed (or a crash,
 or a reboot) loses nothing — on next launch, unfinished transfers are
 still there and resume from the exact byte they reached.
@@ -214,6 +216,18 @@ Every transfer keeps per-chunk checkpoints. Pause, error, idle timeout,
 network drop, restart — when it resumes, it verifies the checkpoint and
 continues from that byte. No re-downloading a 40 GB file because the
 connection blinked at 39 GB.
+
+Verifying means reading the bytes back and comparing them, not trusting the
+file's size. A part file is created at its full size before the first byte
+arrives, so its size proves nothing: if the folder was restored from a
+backup, or another tool wrote over the path, the length can still look
+perfect while the contents are wrong. warpseed re-reads a window of every
+completed lane from the server before resuming, and starts over rather than
+finish a file it cannot vouch for.
+
+Queuing the same file twice does not transfer it twice — one row per
+destination runs at a time, and re-queuing something already waiting gives
+you back the row you already have.
 
 ---
 

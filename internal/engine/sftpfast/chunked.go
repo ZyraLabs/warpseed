@@ -1,6 +1,7 @@
 package sftpfast
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -57,6 +58,109 @@ type ChunkRange struct {
 // Remaining reports the bytes still to fetch for this range.
 func (c ChunkRange) Remaining() int64 { return c.Length - c.Done }
 
+// verifyResumableLocalPart proves the local part still holds the bytes the
+// checkpoints claim, and returns ErrChunkStateLost on any doubt.
+//
+// The size check above cannot do this on its own and never could: the part is
+// preallocated to the full size before the first byte arrives, so Truncate
+// guarantees the number it compares. Anything that replaced the file's
+// contents without changing its length passes — a folder restored from a
+// snapshot or from Windows' "Previous Versions", a second tool writing the
+// same path, or a part left by an interrupted attempt at a different file of
+// the same size. The ranges marked done are then never fetched again, and
+// the published file has the right length and the wrong bytes.
+//
+// For a download the authoritative bytes are the remote ones, so this reads
+// back a window of each claimed range from the server and compares. That is
+// two small reads per range against a transfer measured in gigabytes — the
+// mirror of what verifyResumableRemotePart does for uploads, which had this
+// protection from the start.
+func verifyResumableLocalPart(ctx context.Context, c *Client, remotePath, part string, ranges []ChunkRange) error {
+	lf, err := os.Open(part)
+	if err != nil {
+		// ErrChunkStateLost is destructive — the dispatcher answers it by
+		// deleting the part and restarting from byte zero — so only "the
+		// file is gone" may return it. The caller has already stat'd the
+		// part, and os.Stat needs no handle, so an open that fails on a file
+		// that exists means something is holding it (a backup agent or
+		// scanner on Windows takes a share-violation here). That is a reason
+		// to try again later, not to throw away tens of gigabytes.
+		if os.IsNotExist(err) {
+			return ErrChunkStateLost
+		}
+		return fmt.Errorf("open part to verify: %w", err)
+	}
+	defer lf.Close()
+
+	rf, err := c.sftp.Open(remotePath)
+	if err != nil {
+		if isNotExistRemote(err) {
+			return ErrChunkStateLost
+		}
+		// ErrChunkStateLost is destructive — the dispatcher answers it by
+		// deleting the part and restarting from byte zero. A server that was
+		// merely busy proves nothing and must never trigger that.
+		return fmt.Errorf("open remote source to verify: %w", err)
+	}
+	defer rf.Close()
+
+	remote := make([]byte, resumeVerifyBytes)
+	local := make([]byte, resumeVerifyBytes)
+	sameAt := func(off, n int64) (bool, error) {
+		if _, err := rf.ReadAt(remote[:n], off); err != nil {
+			// A short read where the remote file is supposed to have bytes is
+			// itself proof the state is wrong; anything else is the transport
+			// and must not masquerade as proof.
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return false, nil
+			}
+			return false, fmt.Errorf("read remote source at %d: %w", off, err)
+		}
+		if _, err := lf.ReadAt(local[:n], off); err != nil {
+			if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return false, nil
+			}
+			return false, fmt.Errorf("read local part at %d: %w", off, err)
+		}
+		return bytes.Equal(remote[:n], local[:n]), nil
+	}
+
+	for _, r := range ranges {
+		// Cancellation must never destroy resumable state, so it is reported
+		// as itself and never as ErrChunkStateLost.
+		if err := ctx.Err(); err != nil {
+			return fmt.Errorf("chunked download cancelled: %w", err)
+		}
+		if r.Done <= 0 {
+			continue
+		}
+		n := int64(resumeVerifyBytes)
+		if r.Done < n {
+			n = r.Done
+		}
+		// Tail catches a torn write; head catches a part belonging to a
+		// different file entirely (worth the second read only once the two
+		// windows are disjoint).
+		ok, err := sameAt(r.Offset+r.Done-n, n)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return ErrChunkStateLost
+		}
+		if r.Done >= 2*resumeVerifyBytes {
+			ok, err := sameAt(r.Offset, resumeVerifyBytes)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return ErrChunkStateLost
+			}
+		}
+	}
+	return nil
+}
+
 // DownloadChunks fetches ranges of one remote file in parallel — one worker
 // per client, each on its own connection — writing into a single local
 // .wspart at absolute offsets. This is what lifts a single large file past
@@ -101,6 +205,9 @@ func DownloadChunks(
 		st, serr := os.Stat(part)
 		if serr != nil || st.Size() != size {
 			return ErrChunkStateLost
+		}
+		if err := verifyResumableLocalPart(ctx, clients[0], remotePath, part, ranges); err != nil {
+			return err
 		}
 	}
 
