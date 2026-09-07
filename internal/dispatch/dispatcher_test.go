@@ -341,10 +341,12 @@ func TestGrantedCeilingKeepsTheQueueMoving(t *testing.T) {
 	// Act — the next transfer asks for the configured 3.
 	streams := d.clampToGranted(siteID, 3)
 
-	// Assert — it asks for what the server actually gives, and runs now
-	// instead of waiting hours for a width that will never be free.
-	if streams != 1 {
-		t.Fatalf("clamped request = %d, want 1", streams)
+	// Assert — it asks close to what the server actually gives, and runs now
+	// instead of waiting hours for a width that will never be free. It stops
+	// at 2, never 1: a single lane would send a part-transferred file down
+	// the linear path, which destroys its chunk plan.
+	if streams != 2 {
+		t.Fatalf("clamped request = %d, want 2 (never 1 for a chunked file)", streams)
 	}
 	if !d.fits(siteID, streams, globalCap, siteCap) {
 		t.Fatal("clamped request still does not fit: the queue would stall")
@@ -392,5 +394,18 @@ func TestGrantedCeilingExpires(t *testing.T) {
 	// Act & Assert
 	if got := d.clampToGranted(siteID, 4); got != 2 {
 		t.Fatalf("fresh ceiling gave %d, want 2", got)
+	}
+
+	// Arrange — a server granting one connection.
+	d.granted[siteID] = grant{n: 1, at: time.Now()}
+
+	// Act & Assert — a single-lane transfer is left alone, but a chunked one
+	// is floored at 2 so the shortfall is caught and requeued rather than
+	// silently discarding its plan.
+	if got := d.clampToGranted(siteID, 1); got != 1 {
+		t.Fatalf("single-lane request became %d, want 1", got)
+	}
+	if got := d.clampToGranted(siteID, 8); got != 2 {
+		t.Fatalf("chunked request clamped to %d, want a floor of 2", got)
 	}
 }

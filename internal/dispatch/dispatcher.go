@@ -310,6 +310,15 @@ func (d *Dispatcher) clampToGranted(siteID int64, streams int) int {
 		return streams
 	}
 	if g.n > 0 && streams > g.n {
+		// Never narrow a chunk-eligible transfer to a single connection.
+		// One lane sends it down the linear path, which deletes the .wschunk
+		// and the saved plan — tens of gigabytes discarded because a server
+		// was briefly busy. Asking for 2 and being given 1 is caught
+		// downstream and requeued with the plan intact; asking for 1 is not
+		// caught at all, because it looks like a deliberate setting.
+		if streams >= 2 && g.n < 2 {
+			return 2
+		}
 		return g.n
 	}
 	return streams

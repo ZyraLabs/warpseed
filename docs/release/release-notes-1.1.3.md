@@ -19,7 +19,9 @@ a hard drive unplugged mid-run.
   single connection deleted its multi-lane progress before starting over —
   on a 50 GB file that is tens of gigabytes re-downloaded, and a server
   granting one connection where several were asked for is ordinary. It now
-  waits and retries with its progress intact instead.
+  waits and retries with its progress intact instead. This was the oldest
+  known data-safety item on the roadmap (1.2), and the reason a nearly
+  finished transfer could suddenly start again from nothing.
 - **A server that refuses connections no longer stalls the queue.** When a
   server grants fewer connections than asked for, warpseed now remembers
   what it actually got and sizes the following transfers to match, instead
