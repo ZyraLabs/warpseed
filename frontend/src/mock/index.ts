@@ -205,6 +205,23 @@ const App = {
     state.connected.delete(id);
     emit("site:connstate", { siteId: id, state: "disconnected" });
   },
+  async AppVersion() {
+    return "1.1.8";
+  },
+  async CheckForUpdate() {
+    await delay(120);
+    // Drive the banner with ?update=1; otherwise report "current" so the mock
+    // does not cry wolf every time someone opens it.
+    const want = new URLSearchParams(location.search).get("update") === "1";
+    return {
+      current: "1.1.8",
+      latest: want ? "1.2.0" : "1.1.8",
+      url: "https://github.com/ZyraLabs/warpseed/releases/tag/v1.2.0",
+      available: want,
+      dismissed: false,
+    };
+  },
+  async DismissUpdate(_version: string) {},
   async RemoteHome(id: number) {
     await delay();
     return id === 3 ? "/volume1/media" : "/home/seedling";

@@ -12,8 +12,10 @@ import {
   setSetting,
   sites as fetchSites,
   type Site,
+  appVersion,
+  checkForUpdate,
 } from "../ipc";
-import { APP_VERSION, COMPANY, DONATE_URL, WEBSITE_URL, bugReportUrl } from "../lib/branding";
+import { COMPANY, DONATE_URL, WEBSITE_URL, bugReportUrl } from "../lib/branding";
 import { formatSize } from "../lib/format";
 import { forgetSource } from "../lib/recents";
 import { applyTheme, coerceTheme, THEMES, type ThemePref } from "../lib/theme";
@@ -72,12 +74,18 @@ export default function SettingsDialog() {
   const [draft, setDraft] = useState<SiteDraft | null>(null);
   const [siteMsg, setSiteMsg] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // One source for the running build: the Go side, which reads wails.json.
+  const [version, setVersion] = useState("");
+  const [updateMsg, setUpdateMsg] = useState("");
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     if (!open) return;
     setSiteMsg("");
     setConfirmDelete(false);
     void getSettings().then(setCfg).catch(() => setCfg({}));
+    void appVersion().then(setVersion).catch(() => setVersion("unknown"));
+    setUpdateMsg("");
     void fetchSites().then(setSites).catch(() => undefined);
     void dataLocation().then(setData).catch(() => setData(null));
   }, [open, setSites]);
@@ -571,7 +579,49 @@ export default function SettingsDialog() {
         <section className="set-section">
           <h3>About</h3>
           <p className="set-note set-blurb">
-            warpseed {APP_VERSION} — a free, fast seedbox transfer client by {COMPANY}.
+            warpseed {version} — a free, fast seedbox transfer client by {COMPANY}.
+          </p>
+          <div className="set-row">
+            <label>Tell me about new versions</label>
+            <input
+              type="checkbox"
+              checked={(cfg["updates.check"] ?? "1") === "1"}
+              onChange={(e) => put("updates.check", e.target.checked ? "1" : "0")}
+            />
+          </div>
+          <div className="set-row">
+            <label>
+              <button
+                className="btn"
+                disabled={checking}
+                onClick={() => {
+                  setChecking(true);
+                  setUpdateMsg("");
+                  void checkForUpdate()
+                    .then((u) => {
+                      // The manual check reports the up-to-date case too; the
+                      // automatic one stays silent about it.
+                      setUpdateMsg(
+                        u.available
+                          ? `warpseed ${u.latest} is available.`
+                          : `You are on the latest version (${u.current}).`,
+                      );
+                    })
+                    .catch(() => setUpdateMsg("Could not reach GitHub. Try again later."))
+                    .finally(() => setChecking(false));
+                }}
+              >
+                {checking ? "Checking…" : "Check now"}
+              </button>
+            </label>
+            {updateMsg && <span className="set-note">{updateMsg}</span>}
+          </div>
+          <p className="set-note">
+            Checks GitHub once per run for a newer release. It sends no
+            identifiers and no usage data — the request says nothing about you
+            beyond asking a public page what the latest version is. warpseed
+            never downloads or replaces itself; the button opens the release
+            page and you choose.
             It is free and always will be; if it saves you time, a coffee keeps the
             updates coming.
           </p>
@@ -579,7 +629,7 @@ export default function SettingsDialog() {
             <button className="btn" onClick={() => openExternal(WEBSITE_URL)}>
               zyralabs.tech
             </button>
-            <button className="btn" onClick={() => openExternal(bugReportUrl())}>
+            <button className="btn" onClick={() => openExternal(bugReportUrl(version))}>
               <Bug size={12} className="btn__ico" /> Report a bug
             </button>
             <button className="btn" onClick={() => void logDir()} title="warpseed.log — attach it to a bug report">

@@ -30,8 +30,16 @@ match what you see, that's a bug — [report it](#getting-help).
 
 **Requirements:** Windows 10 or 11, 64-bit, with WebView2 (preinstalled on
 Windows 11). If WebView2 is missing, warpseed offers to download it from
-Microsoft on first run — that is the only connection the app ever makes
-that isn't to a server you configured.
+Microsoft on first run.
+
+Apart from the servers you configure, warpseed makes exactly two other kinds
+of connection, both of which you control: that WebView2 download, and a
+once-per-run check with GitHub for a newer release. The update check sends no
+identifiers and no usage data — it asks a public page what the latest version
+is, and nothing about you goes with the question. Turn it off in
+**Settings → About** if you would rather it did not happen at all. There is
+still no telemetry of any kind, and warpseed never downloads or replaces
+itself: if there is a new version, it tells you and opens the release page.
 
 1. Download `warpseed.exe` from the
    [latest release](https://github.com/ZyraLabs/warpseed/releases/latest).

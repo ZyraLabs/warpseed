@@ -61,6 +61,39 @@ rather than implementation detail.
 6. Remote move partial failure: `MoveInto` returns a count-moved-so-far plus an error. Report
    "Moved 3 of 7, then: <error>" as localfs already does, or attempt a rollback that can itself fail?
 
+## FTP / FTPS — assessed 2026-09-09, verdict: DEFER behind 3.1
+
+Asked for as a fallback for cPanel hosts that only offer FTP. Deferred, not
+rejected, and the reasoning matters more than the verdict:
+
+- **There is no engine to swap.** `internal/engine/core/core.go` declares no
+  interface at all; the concrete `*sftpfast.Client` is threaded through `app.go`
+  (24 lines) and `internal/dispatch/dispatcher.go` (21, including
+  `type Factory func(...) ([]*sftpfast.Client, error)`). Adding a protocol starts
+  with an interface extraction across the two files where this project's worst
+  defects have lived.
+- **Hyperlane does not survive the port, and half of it cannot.** Chunked
+  *download* is possible but expensive: FTP has no ranged read, so each lane
+  needs its own control connection doing PASV/EPSV → REST → RETR, and RETR
+  streams to EOF with no way to stop at an offset. Chunked *upload* is
+  impossible — preallocation (ALLO is advisory), ranged writes, fsync and atomic
+  replace all have no FTP equivalent, and concurrent STOR to one path is
+  undefined by the protocol.
+- **What an FTP user would actually get:** browsing, mkdir/rename/delete,
+  single-stream download and upload with REST resume. Not Hyperlane. Anyone
+  reading "FTP supported" will expect Hyperlane speeds and report the
+  single-stream rate as a bug, so the copy has to be solved before shipping.
+- **Error classification breaks.** `core.Classify` matches SSH wire strings;
+  FTP returns numeric `textproto.Error` codes, so every FTP failure would fall
+  through to ClassPermanent and never retry.
+- **Security promises change.** Host-key TOFU is an SFTP concept; FTPS needs
+  certificate pinning instead, and plain FTP sends credentials in the clear,
+  which contradicts what the app currently promises.
+
+**Recommendation:** ship 3.1 (SSH key and agent auth) first — it serves far more
+seedbox users than a cPanel-only FTP host does. Revisit FTP after, and if it
+ships, ship it as "browse and transfer, single stream" with that stated plainly.
+
 ## Phase 3 — The biggest missing capability
 
 | # | Item | Size | Notes |

@@ -43,6 +43,28 @@ warpseed 1.1.8 — the folder tree remembers
   the stored width rather than the rendered one, so a column showing wider than
   its stored value ignored the beginning of a drag.
 
+## New
+
+- **warpseed tells you when there is a new version.** A calm strip across the
+  top: what is available, what you have, a button to the release page, and a
+  Dismiss that stays dismissed until the release after it. It checks GitHub
+  once per run and never at a moment that would slow the app down.
+
+  It sends no identifiers and no usage data — it asks a public page what the
+  latest version is, and nothing about you goes with the question. There is
+  still no telemetry. Turn it off in **Settings → About**, where there is also
+  a **Check now** button.
+
+  **warpseed never downloads or replaces itself.** It is a portable exe with no
+  installer; an app that rewrites the file it is running from is one antivirus
+  away from leaving you with neither. The button opens the release page and you
+  choose.
+
+- **The version shown in Settings, and in the bug-report email, was wrong.** It
+  said 1.1.1 on every build since — the same drift fixed in the log, still live
+  in the interface. Every bug report emailed since 1.1.2 arrived labelled with
+  the wrong version.
+
 ## Notes
 
 - The tree updates itself when files land. Completing a transfer, renaming,

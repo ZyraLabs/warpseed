@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState} from "react";
 import CommandPalette from "./components/CommandPalette";
 import FilePane from "./components/FilePane";
 import DeckView from "./components/DeckView";
@@ -7,6 +7,7 @@ import TimelineView from "./components/TimelineView";
 import FlightView from "./components/FlightView";
 import { invalidateDir, purgeSource } from "./lib/treeCache";
 import ConfirmDialog from "./components/ConfirmDialog";
+import UpdateBanner from "./components/UpdateBanner";
 import HostKeyDialog from "./components/HostKeyDialog";
 import { Heart, Search, Shrink, Sliders, Slipstream } from "./components/Icon";
 import QueueDock from "./components/QueueDock";
@@ -47,6 +48,9 @@ export default function App() {
   const transfers = useUiStore((s) => s.transfers);
   const viewMode = useUiStore((s) => s.viewMode);
   const miniMode = useUiStore((s) => s.miniMode);
+  // The banner owns whether it is showing; App only needs to know so the grid
+  // gains its row.
+  const [updateShown, setUpdateShown] = useState(false);
   const setMiniMode = useUiStore((s) => s.setMiniMode);
   const setViewMode = useUiStore((s) => s.setViewMode);
 
@@ -192,7 +196,12 @@ export default function App() {
   const connectedCount = Object.values(connStates).filter((s) => s === "connected").length;
 
   return (
-    <div className={`app${miniMode ? " app--mini" : ""}`}>
+    <div
+      className={`app${miniMode ? " app--mini" : ""}${updateShown ? " app--update" : ""}`}
+    >
+      {/* First row when present, so it pushes the app down rather than
+          covering the header. */}
+      <UpdateBanner onShownChange={setUpdateShown} />
       {/* Mini mode overlays the pill and CSS-hides the rest of the tree —
           everything stays MOUNTED so pane state, the queue dock's event
           subscriptions, and scroll positions survive the round trip. */}

@@ -1,7 +1,10 @@
 /* The only module that touches Wails-generated bindings and runtime.
    Everything else imports from here (ux-spec/plan facade rule). */
 import {
+  AppVersion,
   CancelTransfer,
+  CheckForUpdate,
+  DismissUpdate,
   ResolveConflicts,
   ClearDoneTransfers,
   ClearFailedTransfers,
@@ -258,6 +261,24 @@ export interface TransferState {
 /** Connect a site's browse session and resolve its opening directory: the
     site's configured initial remote path when it still exists, else the
     SFTP home (a stale configured path must not wedge the pane). */
+/** What the update banner needs. `available` is false when the running build
+    is already current OR is ahead of the latest release. */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  url: string;
+  available: boolean;
+  dismissed: boolean;
+}
+
+/** The running build, from the Go side. The frontend used to keep its own copy
+    of this string and it drifted by six releases. */
+export const appVersion = (): Promise<string> => AppVersion();
+export const checkForUpdate = (): Promise<UpdateInfo> =>
+  CheckForUpdate() as unknown as Promise<UpdateInfo>;
+/** Silence the banner for one version only. */
+export const dismissUpdate = (version: string): Promise<void> => DismissUpdate(version);
+
 /** The account's home directory on a connected site. */
 export const remoteHome = (id: number): Promise<string> => RemoteHome(id) as Promise<string>;
 

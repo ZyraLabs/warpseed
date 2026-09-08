@@ -283,6 +283,67 @@
 
 /* Mini mode: the pill is the only visible child; the rest of the app stays
    mounted (state, subscriptions) but painted away. */
+/* With the banner showing, its row goes in front of the header's. Swapped by
+   a class rather than always present, so the layout is unchanged when there
+   is no update — and .app--mini already hides it, because that rule hides
+   every direct child of .app that is not the pill. */
+.app--update {
+  grid-template-rows: auto auto 1fr auto auto;
+}
+
+/* Advisory, not alarm: the amber already used for paused transfers and for
+   the settings warnings. Loud treatment stays reserved for host-key changes
+   and destructive overwrites. */
+.updbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: color-mix(in srgb, var(--state-paused) 14%, var(--surface-card));
+  border-bottom: 1px solid color-mix(in srgb, var(--state-paused) 40%, transparent);
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  color: var(--text);
+}
+.updbar__icon {
+  color: var(--state-paused);
+  flex: none;
+}
+.updbar__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.updbar__cta,
+.updbar__dismiss {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-family: var(--font-ui);
+  font-size: var(--text-xs);
+  cursor: pointer;
+}
+.updbar__cta {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.updbar__dismiss {
+  background: var(--surface-2);
+  color: var(--text-mid);
+}
+.updbar__cta:hover {
+  filter: brightness(1.08);
+}
+.updbar__dismiss:hover {
+  color: var(--text);
+}
+
 .app--mini > *:not(.mini) {
   display: none !important;
 }

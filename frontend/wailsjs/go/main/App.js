@@ -6,6 +6,10 @@ export function AddBookmark(arg1, arg2, arg3) {
   return window['go']['main']['App']['AddBookmark'](arg1, arg2, arg3);
 }
 
+export function AppVersion() {
+  return window['go']['main']['App']['AppVersion']();
+}
+
 export function BackupData() {
   return window['go']['main']['App']['BackupData']();
 }
@@ -16,6 +20,10 @@ export function BookmarksFor(arg1) {
 
 export function CancelTransfer(arg1) {
   return window['go']['main']['App']['CancelTransfer'](arg1);
+}
+
+export function CheckForUpdate() {
+  return window['go']['main']['App']['CheckForUpdate']();
 }
 
 export function ClearDoneTransfers() {
@@ -32,6 +40,10 @@ export function ConnectSite(arg1) {
 
 export function DataLocation() {
   return window['go']['main']['App']['DataLocation']();
+}
+
+export function DismissUpdate(arg1) {
+  return window['go']['main']['App']['DismissUpdate'](arg1);
 }
 
 export function DeleteBookmark(arg1) {

@@ -7,11 +7,15 @@ import {core} from '../models';
 
 export function AddBookmark(arg1:number,arg2:string,arg3:string):Promise<void>;
 
+export function AppVersion():Promise<string>;
+
 export function BackupData():Promise<string>;
 
 export function BookmarksFor(arg1:number):Promise<Array<queue.Bookmark>>;
 
 export function CancelTransfer(arg1:number):Promise<void>;
+
+export function CheckForUpdate():Promise<{current:string;latest:string;url:string;available:boolean;dismissed:boolean}>;
 
 export function ClearDoneTransfers():Promise<main.ClearResult>;
 
@@ -20,6 +24,8 @@ export function ClearFailedTransfers(arg1:Array<number>):Promise<main.ClearResul
 export function ConnectSite(arg1:number):Promise<void>;
 
 export function DataLocation():Promise<main.DataInfo>;
+
+export function DismissUpdate(arg1:string):Promise<void>;
 
 export function DeleteBookmark(arg1:number):Promise<void>;
 

@@ -140,6 +140,7 @@ func (a *App) startup(ctx context.Context) {
 
 	a.dispatcher = dispatch.New(store, a.sink, a.dialTransfers)
 	go a.dispatcher.Run(ctx)
+	a.startUpdateCheck()
 }
 
 // dialTransfers opens n dedicated data connections for one transfer.
@@ -1623,6 +1624,11 @@ var settingValidators = map[string]func(string) error{
 	"bw.limit_bytes":       intRange(0, 1<<40),
 	"bw.percent":           intRange(10, 95),
 	"bw.mode":              oneOf("off", "fixed", "percent"),
+	// Default on. A version check sends no identifiers and no usage data, and
+	// the people it exists for — users stranded on 1.0.0 without the NTFS or
+	// data-safety fixes — are exactly the ones who would never find an
+	// off-by-default switch.
+	"updates.check": oneOf("0", "1"),
 	// "dark"/"light" are the pre-v3 names, still accepted so an existing
 	// setting keeps working; the frontend maps them to the new themes.
 	"ui.theme":         oneOf("clay", "cobalt", "iris", "system", "flightdeck", "drafting", "press", "nightshift", "dark", "light"),
