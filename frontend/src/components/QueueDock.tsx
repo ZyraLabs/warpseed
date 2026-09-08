@@ -591,7 +591,31 @@ export default function QueueDock() {
                 </span>
               );
             })}
-            <span className="thead">Progress</span>
+            {/* The bar and the % column show the same measure two ways, so
+                they sort on the same key and light up together — clicking
+                either orders the rows exactly as the bars look. No resize
+                grip: this column absorbs whatever the others leave. */}
+            <span
+              className="thead thead--progress"
+              role="columnheader"
+              aria-sort={
+                sort.key === "pct" ? (sort.desc ? "descending" : "ascending") : "none"
+              }
+            >
+              <button
+                className={`thead__sort ${sort.key === "pct" ? "thead__sort--on" : ""}`}
+                onClick={() => toggleSort("pct")}
+                title="Sort by progress — click again to reverse, again for queue order"
+              >
+                Progress
+                <ArrowUp
+                  size={9}
+                  className={`thead__dir ${
+                    sort.key === "pct" ? (sort.desc ? "thead__dir--desc" : "") : "thead__dir--idle"
+                  }`}
+                />
+              </button>
+            </span>
             <span />
           </div>
 
