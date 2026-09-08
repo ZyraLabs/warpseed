@@ -258,6 +258,9 @@ export interface TransferState {
 /** Connect a site's browse session and resolve its opening directory: the
     site's configured initial remote path when it still exists, else the
     SFTP home (a stale configured path must not wedge the pane). */
+/** The account's home directory on a connected site. */
+export const remoteHome = (id: number): Promise<string> => RemoteHome(id) as Promise<string>;
+
 export async function connectAndHome(id: number, remotePath?: string): Promise<string> {
   await ConnectSite(id);
   const configured = remotePath?.trim();

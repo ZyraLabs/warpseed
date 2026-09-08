@@ -1,5 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { list, localRoots, type PaneSource } from "../ipc";
+import { list, localRoots, remoteHome, type PaneSource } from "../ipc";
 import {
   getChildren,
   getVersion,
@@ -12,6 +12,8 @@ import {
   type TreeNode as CachedNode,
 } from "../lib/treeCache";
 import { ChevronRight } from "./Icon";
+import { useColumnWidths, type ColumnSpec } from "../hooks/useColumnWidths";
+import { useUiStore } from "../store";
 
 interface DirTreeProps {
   /** Which sidebar this is. Expansion is remembered per pane; children are
@@ -24,6 +26,10 @@ interface DirTreeProps {
 }
 
 type Node = CachedNode;
+
+/** One draggable dimension, reusing the pane and queue column machinery so
+    the sidebar resizes and persists exactly the way those columns do. */
+const TREE_COLUMN: ColumnSpec[] = [{ id: "tree-w", label: "Folder tree", min: 120, initial: 190 }];
 
 function joinPath(parent: string, name: string): string {
   const sep = parent.includes("\\") ? "\\" : "/";
@@ -127,18 +133,64 @@ function TreeNode({
 export default function DirTree(props: DirTreeProps) {
   const [roots, setRoots] = useState<Node[]>([]);
 
+  const currentPath = props.currentPath;
   useEffect(() => {
-    if (props.source === "local") {
+    const source = props.source;
+    if (source === "local") {
       void localRoots()
         .then((rs) => setRoots(rs.map((r) => ({ path: r.path, label: r.label }))))
         .catch(() => setRoots([]));
-    } else {
-      setRoots([{ path: "/", label: "/" }]);
+      return;
     }
+    // A remote tree used to start at "/", which on a seedbox is usually not
+    // listable at all — the sidebar opened onto a folder that could never be
+    // expanded. Start where the PANE starts instead: the site's configured
+    // folder, then the account's home, then wherever the pane already is
+    // (which is listable by definition, because it is on screen).
+    let stale = false;
+    const site = useUiStore.getState().sites.find((s) => s.id === source);
+    const configured = site?.remotePath?.trim();
+    const resolve = async (): Promise<string | null> => {
+      if (configured) {
+        try {
+          await list(source, configured);
+          return configured;
+        } catch {
+          // a stale configured path must not wedge the tree
+        }
+      }
+      try {
+        return await remoteHome(source);
+      } catch {
+        return currentPath || null;
+      }
+    };
+    void resolve().then((root) => {
+      if (stale) return;
+      // No usable root is better than a dead "/" the user can only click at.
+      setRoots(root ? [{ path: root, label: root }] : []);
+    });
+    return () => {
+      stale = true;
+    };
+    // currentPath is the last-resort fallback only; re-resolving the root
+    // every time the user navigates would move the tree under them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.source]);
 
+  // Same drag mechanics as the column grips: the width is a CSS variable, so
+  // dragging never re-renders the tree underneath.
+  const { style: treeStyle, startResize } = useColumnWidths(TREE_COLUMN, "ui.tree_width");
+
   return (
-    <nav className="tree" aria-label="Folder tree">
+    <nav className="tree" aria-label="Folder tree" style={treeStyle}>
+      <span
+        className="tree__grip"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize folder tree"
+        onMouseDown={(e) => startResize("tree-w", e)}
+      />
       {roots.map((r) => (
         // The source is part of the key because every remote site's root is
         // "/". Without it, switching a pane from one site to another reuses

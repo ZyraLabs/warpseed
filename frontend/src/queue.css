@@ -581,13 +581,30 @@ button.trow__icon {
   background: var(--surface-3);
 }
 .tree {
-  width: 190px;
+  /* Draggable: a deep remote path does not fit 190px, and truncating the one
+     view whose job is showing structure defeats it. */
+  width: var(--col-tree-w, 190px);
   flex: none;
+  position: relative;
   overflow-y: auto;
   border-right: 1px solid var(--border);
   padding: var(--sp-1) 0;
   font-family: var(--font-data);
   font-size: var(--text-xs);
+}
+/* Sits in the sidebar's right border, matching the column grips in the panes
+   and the queue. Wider than it looks so it is actually catchable. */
+.tree__grip {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 1;
+}
+.tree__grip:hover {
+  background: var(--accent-glow);
 }
 .tree__node {
   display: flex;

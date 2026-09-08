@@ -26,6 +26,23 @@ warpseed 1.1.8 — the folder tree remembers
   came from, so this quietly pointed every bug report at the wrong release. It
   now comes from the same place the release build reads it.
 
+- **The folder tree was useless on most seedboxes.** It always started at
+  `/`, which a seedbox account usually cannot list, so the sidebar opened onto
+  a folder that would never expand. It now starts where the pane starts — the
+  folder configured for the site, then the account's home.
+
+- **The Name column can be resized.** There was no handle on the divider
+  between Name and Size, so the only way to widen it was to shrink the other
+  two columns. Drag the divider and a long filename opens out; the row scrolls
+  if you drag it past the pane.
+
+- **The folder tree sidebar can be resized**, and remembers its width. It was
+  fixed at 190px, which a deep remote path does not fit.
+
+- **Column grips no longer feel dead on the first drag.** They measured from
+  the stored width rather than the rendered one, so a column showing wider than
+  its stored value ignored the beginning of a drag.
+
 ## Notes
 
 - The tree updates itself when files land. Completing a transfer, renaming,

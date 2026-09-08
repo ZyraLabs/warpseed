@@ -80,9 +80,14 @@ function typeIcon(e: FsEntry) {
 /** Size and date are resizable; the name column takes what is left, so
     narrowing these two is how you give a long filename more room. */
 const PANE_COLUMNS: ColumnSpec[] = [
+  // Name first so useColumnWidths emits and persists --col-pname. It is
+  // rendered on its own below rather than through the map, because it sorts
+  // on a different key and its grip sits on the Name/Size divider.
+  { id: "pname", label: "Name", min: 90, initial: 200 },
   { id: "psize", label: "Size", min: 48, initial: 84 },
   { id: "pdate", label: "Modified", min: 60, initial: 112 },
 ];
+const PANE_SIZED = PANE_COLUMNS.filter((c) => c.id !== "pname");
 
 const SORT_LABEL: Record<SortKey, string> = { name: "Name", size: "Size", modTime: "Modified" };
 
@@ -1137,8 +1142,18 @@ export default function FilePane({ side }: { side: PaneSide }) {
                   {SORT_LABEL.name}
                   <ChevronRight size={9} className={chevClass("name")} />
                 </button>
+                {/* The divider between Name and Size. Without it the only way
+                    to widen Name was to shrink the other two, which is not
+                    what a user reaches for when a filename is cut off. */}
+                <span
+                  className="phead__grip"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize Name"
+                  onMouseDown={(e) => startResize("pname", e)}
+                />
               </div>
-              {PANE_COLUMNS.map((c, i) => {
+              {PANE_SIZED.map((c, i) => {
                 const key: SortKey = c.id === "psize" ? "size" : "modTime";
                 return (
                   <div

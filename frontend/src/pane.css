@@ -342,7 +342,14 @@
   inset-inline: 6px;
   height: var(--row-h);
   display: grid;
-  grid-template-columns: 1fr var(--col-psize, 84px) var(--col-pdate, 112px);
+  /* Name is minmax(width, 1fr), not a bare 1fr: the width is what the grip on
+     the Name/Size divider drags, and the 1fr keeps it absorbing the slack when
+     the pane is wider than the columns need. A long filename can therefore be
+     opened out past the pane, which .pane__body scrolls. */
+  grid-template-columns:
+    minmax(var(--col-pname, 200px), 1fr)
+    var(--col-psize, 84px)
+    var(--col-pdate, 112px);
   gap: var(--sp-2);
   align-items: center;
   padding: 0 var(--sp-2);

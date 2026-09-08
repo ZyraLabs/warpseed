@@ -9,12 +9,14 @@ export type PrefKey =
   | "ui.queue_columns"
   | "ui.pane_columns"
   | "ui.pane_sort"
+  | "ui.tree_width"
   | "ui.recents";
 
 const ALL: PrefKey[] = [
   "ui.queue_columns",
   "ui.pane_columns",
   "ui.pane_sort",
+  "ui.tree_width",
   "ui.recents",
 ];
 
@@ -24,6 +26,8 @@ const LEGACY: Record<PrefKey, string> = {
   "ui.queue_columns": "ws-queue-columns",
   "ui.pane_columns": "ws-pane-columns",
   "ui.pane_sort": "ws-pane-sort",
+  // No pre-database name: the tree width arrived after the settings store did.
+  "ui.tree_width": "",
   "ui.recents": "ws-recent-paths",
 };
 
@@ -35,10 +39,12 @@ const cache = new Map<string, string>();
   try {
     for (const key of ALL) {
       if (localStorage.getItem(key) !== null) continue;
-      const old = localStorage.getItem(LEGACY[key]);
+      const legacy = LEGACY[key];
+      if (!legacy) continue; // no pre-database name: nothing to carry across
+      const old = localStorage.getItem(legacy);
       if (old !== null) {
         localStorage.setItem(key, old);
-        localStorage.removeItem(LEGACY[key]);
+        localStorage.removeItem(legacy);
       }
     }
   } catch {

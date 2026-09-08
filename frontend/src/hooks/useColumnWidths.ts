@@ -63,7 +63,19 @@ export function useColumnWidths(columns: ColumnSpec[], storageKey: PrefKey) {
       event.preventDefault();
       event.stopPropagation();
       touched.current = true;
-      drag.current = { id, startX: event.clientX, startWidth: widths[id] };
+      // Measure what the column is ACTUALLY rendering, not what is stored.
+      // A column declared minmax(width, 1fr) renders wider than its stored
+      // width whenever the pane has slack, so dragging from the stored value
+      // moves the grip without moving the column until the drag exceeds the
+      // difference — the grip feels dead. The grip is a sibling of the cell
+      // it resizes, so its parent is the thing to measure.
+      const cell = (event.currentTarget as HTMLElement).parentElement;
+      const rendered = cell ? Math.round(cell.getBoundingClientRect().width) : 0;
+      drag.current = {
+        id,
+        startX: event.clientX,
+        startWidth: rendered > 0 ? rendered : widths[id],
+      };
     },
     [widths],
   );
