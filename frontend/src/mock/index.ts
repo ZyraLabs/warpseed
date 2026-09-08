@@ -288,7 +288,12 @@ const App = {
     for (const e of REMOTE[id]?.[key] ?? []) if (e.name === old) e.name = newName;
     emit("fs:changed", { source: "remote", siteId: id, dir: key });
   },
-  async MoveLocal(paths: string[], _dest: string, _dir: string) {
+  async MoveLocal(paths: string[], dest: string, dir: string) {
+    // Both edges, matching app.go's MoveLocal: a move changes the folder the
+    // files left AND the one they arrived in. The mock used to emit neither,
+    // so anything keyed off fs:changed passed here and failed in the app.
+    emit("fs:changed", { source: "local", siteId: 0, dir });
+    emit("fs:changed", { source: "local", siteId: 0, dir: dest });
     return paths.length;
   },
   async EnqueueDownloads(siteId: number, items: { src: string; size: number; isDir: boolean }[], localDir: string) {

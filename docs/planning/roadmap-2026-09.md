@@ -32,9 +32,34 @@ anything in Phase 2.
 | # | Item | Size | Notes |
 |---|---|---|---|
 | 2.1 | **Drag and drop** | L | Cross-pane drop queues a transfer; drop on a folder row targets it; same-pane drop onto a folder moves (destructive — needs confirmation). Explicitly excludes drag in/out of Explorer. |
-| 2.2 | **Close-guard dialog + close-to-pill** | M | Fully designed (WP-B1, WP-F1 must-ship; B2 is already done). Wails v2 has no tray, so the mini pill is the answer. `OnBeforeClose` must emit-and-return, never block. |
-| 2.3 | **Folder tree children cache** | S | `DirTree.tsx:66` discards children on collapse, so every re-expand re-lists over the network — worse now that nodes default to collapsed. Cache keyed by source+path, invalidated by `fs:changed`. |
+| 2.2 | **Close-guard dialog + close-to-pill** | M | Design recovered and committed at `docs/design/close-guard.md` (it was never in the repo — it survived only in a workflow journal outside it). Wails v2 has no tray, so the mini pill is the answer; `OnBeforeClose` must emit-and-return, never block. **Blocked on two decisions** — see the questions logged below. |
+| 2.3 | ~~**Folder tree children cache**~~ | S | **Done in 1.1.8.** `frontend/src/lib/treeCache.ts` holds children, expansion and failed-listing markers keyed by source+path, outside React so a branch survives collapsing its parent and closing the sidebar. Invalidated subtree-wide by `fs:changed` and purged per source on connect/disconnect. Measured: re-expand went from 1 listing to 0, restoring a collapsed branch from N to 0. Also fixed a staleness bug this uncovered — every remote root is "/", so switching a pane between sites showed the previous server's folders. |
 | 2.4 | **Upload throughput** | ? | Blocked on measurement: 8-lane and 16-lane numbers on an empty queue. 1 lane = 35 KiB/s vs 3 lanes = 905 KiB/s is 26×, which points at per-stream collapse on the link rather than warpseed. |
+
+### Open questions blocking 2.1 and 2.2
+
+Raised by the Phase 2 mapping on 2026-09-08. Each changes what gets built, so they are decisions
+rather than implementation detail.
+
+**2.2 close guard**
+1. With `ui.close_action = 'pill'`, what actually closes the app? Read literally, the design has the
+   pill's X re-enter the same guard and the guard's pill branch minimise to the pill — a window that
+   can never be closed by its X. Either the pill branch falls through to allow on a second gesture,
+   or the guard must offer an explicit quit.
+2. `running == 0` but the queue holds pending rows: the design says allow, so the app closes silently
+   with 200 transfers queued. That matches today's behaviour exactly, and is arguably still wrong.
+3. The close guard versus the shared confirm slot: `useUiStore.confirm` is a SINGLE slot and a second
+   `askConfirm` silently replaces the first, whose `onConfirm` then never fires. Decide whether the
+   guard uses that slot or stays a separate component that can coexist with it.
+
+**2.1 drag and drop**
+4. Cross-pane drop where both panes are the SAME source (both local, or the same site): reject with a
+   toast, or treat it as a move? The queue is siteId-based and has no same-kind cross-pane path, so
+   rejecting is the literal reading of the roadmap.
+5. Drop onto a folder row in the OTHER pane, same source — move (matching the same-pane rule) or the
+   rejection above? This is the case a two-local-panes user hits first and the roadmap does not cover.
+6. Remote move partial failure: `MoveInto` returns a count-moved-so-far plus an error. Report
+   "Moved 3 of 7, then: <error>" as localfs already does, or attempt a rollback that can itself fail?
 
 ## Phase 3 — The biggest missing capability
 

@@ -5,6 +5,7 @@ import DeckView from "./components/DeckView";
 import MiniView from "./components/MiniView";
 import TimelineView from "./components/TimelineView";
 import FlightView from "./components/FlightView";
+import { invalidateDir, purgeSource } from "./lib/treeCache";
 import ConfirmDialog from "./components/ConfirmDialog";
 import HostKeyDialog from "./components/HostKeyDialog";
 import { Heart, Search, Shrink, Sliders, Slipstream } from "./components/Icon";
@@ -25,6 +26,7 @@ import {
   sites as fetchSites,
   type ConnState,
   type TransferState,
+  type FsChanged,
 } from "./ipc";
 import { useUiStore } from "./store";
 import "./App.css";
@@ -101,6 +103,18 @@ export default function App() {
       }
       lastConn[c.siteId] = c.state;
       setConnState(c.siteId, c.state);
+      // A tree remembered across a disconnect can be a picture of a server we
+      // are no longer talking to — and site ids are recycled, so it could even
+      // belong to a different server. Purge on both edges.
+      if (c.state === "disconnected" || c.state === "error" || c.state === "connected") {
+        purgeSource(c.siteId);
+      }
+    });
+    // The tree sidebar is unmounted whenever a pane closes it, so its cache
+    // cannot own this subscription — it would miss every change made while
+    // the sidebar was shut and then show them as though nothing had happened.
+    const offTreeFs = on<FsChanged>("fs:changed", (ev) => {
+      invalidateDir(ev.source === "local" ? "local" : ev.siteId, ev.dir);
     });
     // One-time nudge after the first transfer ever completes: point at the
     // status-bar heart, then never mention it again.
@@ -111,6 +125,7 @@ export default function App() {
     });
     return () => {
       offConn();
+      offTreeFs();
       offDonate();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps

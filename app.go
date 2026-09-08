@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -59,10 +60,31 @@ func NewApp() *App {
 	}
 }
 
+// wailsJSON is the build manifest, embedded so the version in the log comes
+// from the same place the release workflow checks against the tag.
+//
+//go:embed wails.json
+var wailsJSON []byte
+
 // appVersion is stamped into the log so a pasted excerpt identifies its build.
-// Kept in step with wails.json productVersion, which the release workflow
-// checks against the tag.
-const appVersion = "1.1.1"
+//
+// It is READ from wails.json rather than restated here. It used to be a
+// hand-maintained constant, and it drifted: every build from 1.1.1 to 1.1.7
+// logged "warpseed 1.1.1 starting". A tester's log is the main evidence for
+// which build a bug came from, so a stale version there sends the wrong fix to
+// the wrong release — the one failure mode a duplicated constant guarantees
+// eventually.
+var appVersion = func() string {
+	var m struct {
+		Info struct {
+			ProductVersion string `json:"productVersion"`
+		} `json:"info"`
+	}
+	if err := json.Unmarshal(wailsJSON, &m); err != nil || m.Info.ProductVersion == "" {
+		return "unknown"
+	}
+	return m.Info.ProductVersion
+}()
 
 // shutdownGrace is how long a close waits for in-flight transfers to record
 // their final state. Long enough for a checkpoint write to land, short enough

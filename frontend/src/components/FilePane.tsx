@@ -1075,6 +1075,7 @@ export default function FilePane({ side }: { side: PaneSide }) {
       <div className="pane__body">
         {treeOpen && (
           <DirTree
+            pane={side}
             source={source}
             currentPath={nav.listing?.path ?? path}
             onNavigate={nav.navigate}
