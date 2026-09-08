@@ -4,6 +4,14 @@
 
 .app {
   display: grid;
+  /* minmax(0, 1fr), not the implicit auto: a grid column sized to its
+     widest child grows to fit the queue's fixed column widths, so the app
+     became wider than the window and an ancestor clipped the overflow with
+     no scrollbar. Below about 960px — including the 900px minimum window —
+     that put the right-hand queue columns permanently out of reach, and
+     widening a column to read a long filename only pushed more off the
+     edge. Capped here, each row handles its own overflow instead. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr auto auto;
   height: 100vh;
   background: var(--surface-0);

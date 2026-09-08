@@ -92,6 +92,9 @@ interface LaneDot {
 interface Lane {
   id: number;
   failed: boolean;
+  /** Uploads are drawn in their own colour so a busy flow reads at a
+      glance; the dots already travel the other way. */
+  upload: boolean;
   d: string;
   opacity: number;
   dots: LaneDot[];
@@ -295,6 +298,7 @@ export default function FlightView() {
       {
         id: t.id,
         failed: isFailed,
+        upload: t.direction === "upload",
         d: `M${x0} ${y0} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${x1} ${y1}`,
         opacity: isFailed ? 0.8 : 0.3 + 0.6 * share,
         dots,
@@ -373,7 +377,13 @@ export default function FlightView() {
                 <g key={l.id}>
                   <path
                     d={l.d}
-                    stroke={l.failed ? "var(--state-error)" : "var(--accent)"}
+                    stroke={
+                      l.failed
+                        ? "var(--state-error)"
+                        : l.upload
+                          ? "var(--state-upload)"
+                          : "var(--accent)"
+                    }
                     strokeWidth={l.failed ? 2.5 : 3}
                     strokeLinecap="round"
                     strokeDasharray={l.failed ? "2 8" : undefined}

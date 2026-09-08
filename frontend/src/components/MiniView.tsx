@@ -49,7 +49,7 @@ export default function MiniView() {
             <span className="mini__name" title={top.src}>
               {baseName(top.src)}
             </span>
-            <span className="mini__lanes">
+            <span className={`mini__lanes ${top.direction === "upload" ? "lanes--up" : ""}`}>
               {(top.chunks && top.chunks.length > 1 ? top.chunks : [top.pct]).map((f, i) => (
                 <span key={i} className="mini__lane">
                   <span style={{ transform: `scaleX(${Math.min(Math.max(f, 0), 1)})` }} />

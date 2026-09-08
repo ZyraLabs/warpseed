@@ -73,3 +73,9 @@
   cursor: pointer;
 }
 .mini__restore:hover { color: var(--text); border-color: var(--border-strong); }
+
+/* Uploads take their own colour wherever progress is drawn, so a glance
+   says which way the bytes are going. */
+.lanes--up .mini__lane > span {
+  background: var(--state-upload);
+}

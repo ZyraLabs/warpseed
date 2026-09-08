@@ -29,6 +29,8 @@
   --state-done: #7d9c76;
   --state-paused: #a8842f;
   --state-error: #c03d2f;
+  /* uploads: cool against clay's warm accent */
+  --state-upload: #2f7f9e;
   --folder: #d99b2f;
 
   --border: #e6dccd;
@@ -62,6 +64,8 @@
   --state-done: #1d9e5f;
   --state-paused: #a07c1d;
   --state-error: #d94040;
+  /* uploads: magenta, clear of cobalt's blue accent */
+  --state-upload: #b5279b;
   --folder: #7c828e;
 
   --border: #e2dfd8;
@@ -96,6 +100,8 @@
   --state-done: #6ee7a8;
   --state-paused: #e8b45c;
   --state-error: #ff6e9c;
+  /* uploads: aqua — iris's accent is violet and its error is pink */
+  --state-upload: #3fd2c7;
   --folder: #9a92c4;
 
   --border: #272052;

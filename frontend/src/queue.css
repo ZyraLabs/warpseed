@@ -448,6 +448,13 @@ button.trow__icon {
   transform-origin: left;
   transition: transform 250ms linear;
 }
+/* Uploads read as a different colour everywhere progress is drawn, so a
+   glance at a mixed queue says which way the bytes are going. State still
+   wins: a paused or failed upload is paused or failed first. */
+.trow--up .trow__bar > div,
+.trow--up .hyper__lane > span {
+  background: var(--state-upload);
+}
 .trow--paused .trow__bar > div {
   background: var(--state-paused);
 }

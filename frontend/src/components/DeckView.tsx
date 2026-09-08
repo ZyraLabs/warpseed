@@ -198,7 +198,7 @@ export default function DeckView() {
                 {heroSite} → {dirName(hero.dst)} · {etaText(hero.bytes, hero.size, hero.rate)}
               </span>
               {hero.chunks && hero.chunks.length > 1 ? (
-                <span className="dhero__lanesbar">
+                <span className={`dhero__lanesbar ${isDownload(hero) ? "" : "lanes--up"}`}>
                   {hero.chunks.map((f, i) => (
                     <span key={i} className="dhero__lane">
                       <span style={{ transform: `scaleX(${Math.min(Math.max(f, 0), 1)})` }} />
@@ -206,7 +206,7 @@ export default function DeckView() {
                   ))}
                 </span>
               ) : (
-                <span className="dhero__lanesbar">
+                <span className={`dhero__lanesbar ${isDownload(hero) ? "" : "lanes--up"}`}>
                   <span className="dhero__lane">
                     <span style={{ transform: `scaleX(${heroPct})` }} />
                   </span>

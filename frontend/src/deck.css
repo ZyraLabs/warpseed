@@ -175,3 +175,9 @@
   .deck { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; grid-auto-rows: minmax(150px, auto); }
   .dcard--hero { grid-column: span 2; }
 }
+
+/* Uploads take their own colour wherever progress is drawn, so a glance
+   says which way the bytes are going. */
+.lanes--up .dhero__lane > span {
+  background: var(--state-upload);
+}

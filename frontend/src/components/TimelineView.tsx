@@ -213,7 +213,7 @@ export default function TimelineView() {
                 <span className="tl__name" title={t.src}>
                   {baseName(t.src)}
                 </span>
-                <span className="tl__lanes">
+                <span className={`tl__lanes ${t.direction === "upload" ? "lanes--up" : ""}`}>
                   {(chunks ?? [pct]).map((f, i) => (
                     <span key={i} className="tl__lane">
                       <span style={{ transform: `scaleX(${Math.min(Math.max(f, 0), 1)})` }} />

@@ -179,3 +179,9 @@
 @media (max-width: 760px) {
   .tl__summary { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* Uploads take their own colour wherever progress is drawn, so a glance
+   says which way the bytes are going. */
+.lanes--up .tl__lane > span {
+  background: var(--state-upload);
+}

@@ -640,7 +640,7 @@ export default function QueueDock() {
                   key={t.id}
                   data-index={vi.index}
                   ref={virtualizer.measureElement}
-                  className={`trow trow--virtual trow--${t.state} ${hasError ? "trow--witherror" : ""} ${conflict ? "trow--held" : ""}`}
+                  className={`trow trow--virtual trow--${t.state} ${hasError ? "trow--witherror" : ""} ${conflict ? "trow--held" : ""} ${t.direction === "upload" ? "trow--up" : ""}`}
                   style={{ transform: `translateY(${vi.start - listTop}px)` }}
                 >
                   <span className="trow__icon">
@@ -649,8 +649,15 @@ export default function QueueDock() {
                   <span className="trow__name" title={t.src}>
                     {baseName(t.src)}
                   </span>
+                  {/* Where it is going, which is not the same sentence in
+                      both directions: a download arrives from the site onto
+                      this machine, an upload leaves this machine for the
+                      site. Naming the site as the source of an upload was
+                      simply wrong. */}
                   <span className="trow__route" title={`${t.src} → ${t.dst}`}>
-                    {siteName} → {t.dst}
+                    {t.direction === "upload"
+                      ? `This PC → ${siteName}:${t.dst}`
+                      : `${siteName} → ${t.dst}`}
                   </span>
                   <span className="trow__size" title={t.size > 0 ? `${t.size} bytes` : undefined}>
                     {t.size > 0 ? formatSize(t.size) : "—"}
