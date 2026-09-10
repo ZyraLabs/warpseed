@@ -31,8 +31,12 @@ import (
 type Factory func(ctx context.Context, siteID int64, n int) ([]*sftpfast.Client, error)
 
 const (
-	defaultGlobalCap = 6
-	defaultSiteCap   = 3
+	// 8, not 6: the shipped lane counts are 4 for downloads and 3 for uploads,
+	// so a budget of 6 cannot run one of each — whichever direction claimed
+	// the connections first held them for the whole transfer while the other
+	// waited. 4 + 3 needs 7; 8 leaves one spare.
+	defaultGlobalCap = 8
+	defaultSiteCap   = 8
 	maxAttempts      = 3
 	// Chunked (multi-connection) downloads: default threshold and stream
 	// count. A server that caps per-connection speed is the whole reason
@@ -238,14 +242,19 @@ func (d *Dispatcher) pump(ctx context.Context) {
 		siteDefault = defaultSiteCap
 	}
 	siteCaps := make(map[int64]int)
-	// Sites whose next transfer could not be admitted this pass. Filling the
+	// Queues whose next transfer could not be admitted this pass. Filling the
 	// spare connections with whatever fits further down the queue would let a
 	// run of small files hold a wide one at the head of the line, and makes
-	// the order the queue shows a lie. One site running out of budget must
-	// not stall the others, so this is per site rather than a break.
-	blocked := make(map[int64]bool)
+	// the order the queue shows a lie.
+	//
+	// Keyed by site AND DIRECTION. Queue order is a promise within one
+	// direction — don't let small downloads jump a big one — but it is not a
+	// promise between them: an upload that cannot fit has no business
+	// stopping downloads from being considered. Keyed by site alone, one
+	// upload waiting for width froze every download to that server.
+	blocked := make(map[string]bool)
 	for _, t := range pending {
-		if blocked[t.SiteID] {
+		if blocked[laneGroup(t)] {
 			continue
 		}
 		siteCap, ok := siteCaps[t.SiteID]
@@ -272,7 +281,7 @@ func (d *Dispatcher) pump(ctx context.Context) {
 		streams = d.clampToGranted(t.SiteID, streams)
 		if !d.fits(t.SiteID, streams, globalCap, siteCap) {
 			d.mu.Unlock()
-			blocked[t.SiteID] = true
+			blocked[laneGroup(t)] = true
 			continue
 		}
 		if dk := dstKey(t); d.activeDst[dk] {
@@ -411,6 +420,12 @@ func (d *Dispatcher) streamsFor(t queue.Transfer, siteCap int) int {
 		return 1
 	}
 	return streams
+}
+
+// laneGroup names the queue a transfer waits in: one per site per direction.
+// Head-of-line blocking applies within a group, never across them.
+func laneGroup(t queue.Transfer) string {
+	return fmt.Sprintf("%d/%s", t.SiteID, t.Direction)
 }
 
 // dstKey identifies the file a transfer writes. An upload's destination is

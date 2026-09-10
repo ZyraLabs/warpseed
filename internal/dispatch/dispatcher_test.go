@@ -433,3 +433,58 @@ func TestDstKeySeparatesSitesAndDirections(t *testing.T) {
 		t.Fatal("two downloads onto one local path were treated as separate files")
 	}
 }
+
+// TestLaneGroupSeparatesDirections — head-of-line blocking is a promise about
+// queue ORDER, which only holds within one direction. An upload that cannot
+// fit has no business stopping downloads from being considered; keyed by site
+// alone, one upload waiting for width froze every download to that server.
+func TestLaneGroupSeparatesDirections(t *testing.T) {
+	up := queue.Transfer{SiteID: 1, Direction: "upload"}
+	down := queue.Transfer{SiteID: 1, Direction: "download"}
+	other := queue.Transfer{SiteID: 2, Direction: "upload"}
+
+	if laneGroup(up) == laneGroup(down) {
+		t.Fatal("an upload and a download on one site share a blocking group")
+	}
+	if laneGroup(up) == laneGroup(other) {
+		t.Fatal("the same direction on two sites shares a blocking group")
+	}
+	if laneGroup(up) != laneGroup(queue.Transfer{SiteID: 1, Direction: "upload"}) {
+		t.Fatal("the same site and direction does not produce a stable group")
+	}
+}
+
+// TestUploadDoesNotConsumeTheWholeSiteBudget documents the arithmetic the
+// shipped defaults actually produce, so a change to either default has to
+// face this test rather than quietly re-creating the problem.
+func TestUploadDoesNotConsumeTheWholeSiteBudget(t *testing.T) {
+	// Arrange — the shipped defaults.
+	d, s := newTestDispatcher(t)
+	set(t, s, "transfers.global_max", itoa(defaultGlobalCap))
+	set(t, s, "transfers.chunk_min_mb", "256")
+	set(t, s, "transfers.chunk_streams", itoa(defaultChunkStream))
+	set(t, s, "transfers.upload_chunk_min_mb", "128")
+	set(t, s, "transfers.upload_chunk_streams", itoa(defaultUploadChunkStream))
+
+	big := int64(4096) << 20
+	up := queue.Transfer{Engine: "sftpfast", Direction: "upload", Size: big}
+	down := queue.Transfer{Engine: "sftpfast", Direction: "download", Size: big}
+
+	// The budget a real install has. Migration 013 moves existing databases
+	// onto it; defaultSiteCap is what a fresh one starts with.
+	const shippedSiteCap = defaultSiteCap
+	upLanes := d.streamsFor(up, shippedSiteCap)
+	downLanes := d.streamsFor(down, shippedSiteCap)
+
+	// Assert — one upload and one download must fit together. They currently
+	// do not: 3 + 4 = 7 against a budget of 6, so whichever direction claims
+	// the connections first holds them for the whole length of a 50 GB
+	// transfer while the other waits. This test is the invariant; the fix is
+	// either a bigger budget or a smaller shipped lane count, and whichever
+	// is chosen has to face this assertion.
+	if upLanes+downLanes > shippedSiteCap {
+		t.Fatalf("an upload (%d lanes) and a download (%d lanes) need %d connections "+
+			"but the shipped per-site budget is %d — one direction starves the other",
+			upLanes, downLanes, upLanes+downLanes, shippedSiteCap)
+	}
+}

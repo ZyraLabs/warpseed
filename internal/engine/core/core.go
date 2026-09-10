@@ -55,6 +55,16 @@ func Classify(err error) ErrClass {
 	case strings.Contains(msg, "timeout"),
 		strings.Contains(msg, "connection reset"),
 		strings.Contains(msg, "broken pipe"),
+		// pkg/sftp's word for a dead session (request-errors.go: "connection
+		// lost"). It used to match nothing here and fall through to
+		// Permanent, so the single most transient failure there is — a
+		// dropped connection mid-transfer — failed the row outright instead
+		// of retrying it.
+		strings.Contains(msg, "connection lost"),
+		strings.Contains(msg, "connection closed"),
+		// What net/http and crypto/ssh say when we tear a connection down
+		// underneath a copy that is still running.
+		strings.Contains(msg, "use of closed network connection"),
 		strings.Contains(msg, "eof"):
 		return ClassTransient
 	default:

@@ -160,4 +160,14 @@ var migrations = []string{
 	`
 	INSERT OR IGNORE INTO settings(key,value) VALUES ('ui.close_action','ask');
 	`,
+
+	// 013 — raise the connection budgets so an upload and a download can run
+	// at once. The shipped lane counts are 4 down and 3 up, which needs 7;
+	// the previous budget of 6 meant whichever direction started first held
+	// every connection until it finished. Only nudges installs still on the
+	// old defaults — anything the user has deliberately set is left alone.
+	`
+	UPDATE settings SET value='8' WHERE key='transfers.site_max'   AND value='6';
+	UPDATE settings SET value='8' WHERE key='transfers.global_max' AND value='6';
+	`,
 }

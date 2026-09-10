@@ -6,9 +6,14 @@ func TestSettingsDefaultsSeededByMigration(t *testing.T) {
 	// Arrange & Act
 	s := openTestStore(t)
 
-	// Assert — migration 002 seeds transfer/bandwidth/theme defaults
-	if got := s.SettingInt("transfers.global_max", 0); got != 6 {
-		t.Fatalf("transfers.global_max = %d, want seeded 6", got)
+	// Assert — migration 002 seeds transfer/bandwidth/theme defaults, and
+	// 013 raises the connection budgets so an upload and a download can run
+	// together (4 download lanes + 3 upload lanes needs 7, not 6).
+	if got := s.SettingInt("transfers.global_max", 0); got != 8 {
+		t.Fatalf("transfers.global_max = %d, want 8 after migration 013", got)
+	}
+	if got := s.SettingInt("transfers.site_max", 0); got != 8 {
+		t.Fatalf("transfers.site_max = %d, want 8 after migration 013", got)
 	}
 	if got := s.Setting("bw.mode", ""); got != "off" {
 		t.Fatalf("bw.mode = %q, want off", got)
