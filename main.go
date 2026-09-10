@@ -26,6 +26,10 @@ func main() {
 		BackgroundColour: &options.RGBA{R: 16, G: 18, B: 24, A: 1},
 		OnStartup:        app.startup,
 		OnShutdown:       app.shutdown,
+		// NOT HideWindowOnClose: that branch skips OnBeforeClose entirely, and
+		// with no tray in Wails v2 a hidden window is one only Task Manager
+		// can find.
+		OnBeforeClose: app.beforeClose,
 		Bind: []interface{}{
 			app,
 		},

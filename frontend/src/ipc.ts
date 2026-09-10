@@ -1,7 +1,11 @@
 /* The only module that touches Wails-generated bindings and runtime.
    Everything else imports from here (ux-spec/plan facade rule). */
 import {
+  AckCloseDialog,
   AppVersion,
+  CancelQuit,
+  CloseToPill,
+  ConfirmQuit,
   CancelTransfer,
   CheckForUpdate,
   DismissUpdate,
@@ -369,6 +373,20 @@ export const resolveConflicts = (
   action: "overwrite" | "skip" | "rename",
 ): Promise<ConflictResult> =>
   ResolveConflicts(ids, action) as unknown as Promise<ConflictResult>;
+
+/** Payload of app:close-requested — emitted when the user tries to close
+    warpseed while transfers are running. */
+export interface CloseRequest {
+  running: number;
+  checkpointMB: number;
+}
+
+/** Must be called the instant the dialog mounts: Go force-quits after two
+    seconds without it, which is the escape from a wedged frontend. */
+export const ackCloseDialog = (): Promise<void> => AckCloseDialog();
+export const confirmQuit = (): Promise<void> => ConfirmQuit();
+export const cancelQuit = (): Promise<void> => CancelQuit();
+export const closeToPill = (): Promise<void> => CloseToPill();
 
 export const clearDoneTransfers = (): Promise<ClearResult> =>
   ClearDoneTransfers() as unknown as Promise<ClearResult>;

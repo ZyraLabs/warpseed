@@ -205,6 +205,10 @@ const App = {
     state.connected.delete(id);
     emit("site:connstate", { siteId: id, state: "disconnected" });
   },
+  async AckCloseDialog() {},
+  async ConfirmQuit() {},
+  async CancelQuit() {},
+  async CloseToPill() {},
   async AppVersion() {
     return "1.1.8";
   },

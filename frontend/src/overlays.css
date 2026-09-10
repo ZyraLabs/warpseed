@@ -489,6 +489,44 @@
   accent-color: var(--accent);
 }
 
+/* The close guard is the CALM card: no error ring, no warning colour.
+   Nothing here is destroyed — transfers checkpoint and resume — so the loud
+   treatment stays reserved for host-key changes and destructive overwrites. */
+.dialog--closeguard {
+  max-width: 44rem;
+}
+.dialog--closeguard h2 {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+/* The live rate rides the title so it reads as one sentence, not a second
+   paragraph competing with the explanation. */
+.cg__rate {
+  font-family: var(--font-data);
+  font-size: var(--text-xs);
+  font-weight: 400;
+  color: var(--state-active);
+}
+.dialog__actions--split {
+  flex-wrap: wrap;
+}
+.cg__dontask {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--text-2xs);
+  color: var(--text-faint);
+  cursor: pointer;
+  user-select: none;
+}
+.cg__dontask input {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
 .set-note {
   font-size: var(--text-2xs);
   color: var(--text-faint);

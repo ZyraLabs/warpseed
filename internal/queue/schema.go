@@ -155,4 +155,9 @@ var migrations = []string{
 	`
 	ALTER TABLE transfers ADD COLUMN conflict TEXT;
 	`,
+
+	// 012 — what the X button does while transfers are running.
+	`
+	INSERT OR IGNORE INTO settings(key,value) VALUES ('ui.close_action','ask');
+	`,
 }

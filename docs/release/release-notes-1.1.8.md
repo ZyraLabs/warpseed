@@ -65,6 +65,22 @@ warpseed 1.1.8 — the folder tree remembers
   in the interface. Every bug report emailed since 1.1.2 arrived labelled with
   the wrong version.
 
+- **Closing warpseed while transfers are running now asks first.** It used to
+  be a hard kill with no warning. Nothing was ever actually lost — every
+  connection checkpoints, and unfinished transfers restart on the next launch —
+  but you were never told that, and a 50 GB overnight run simply vanishing is
+  not something to find out by guessing.
+
+  The confirmation says how many transfers are running, how much would be
+  re-sent (about 8 MB per connection), what the leftover `.wspart` and
+  `.wschunk` files are for, and how many queued transfers are untouched. Three
+  answers: keep warpseed open, close and resume later, or minimize to the pill
+  and leave everything running.
+
+  **An idle warpseed still closes instantly**, exactly as before — no dialog, no
+  delay. Settings → Closing chooses what the X button does while transfers are
+  running, and the confirmation itself offers "don't ask again".
+
 ## Notes
 
 - The tree updates itself when files land. Completing a transfer, renaming,

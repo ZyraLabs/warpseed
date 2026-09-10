@@ -476,7 +476,7 @@ func sendRange(
 			// Checkpoint mid-range so an ungraceful kill costs at most this
 			// much rework. The time bound matters on a throttled or slow link,
 			// where the byte bound alone could be minutes away.
-			if sinceCheckpoint >= checkpointEvery || time.Since(lastCheckpoint) >= checkpointInterval {
+			if sinceCheckpoint >= CheckpointEvery || time.Since(lastCheckpoint) >= checkpointInterval {
 				if cerr := commit(false); cerr != nil {
 					return cerr
 				}

@@ -1024,6 +1024,16 @@ func (d *Dispatcher) discardPartials(t queue.Transfer) {
 	d.sink.Emit("transfer:progress", map[string]any{"id": t.ID, "bytes": int64(0), "size": t.Size})
 }
 
+// ActiveCount reports how many transfers are running right now. It reads only
+// in-memory state — never the database — because the close guard calls it from
+// the Windows UI thread, where a blocked query would freeze the message pump
+// that has to paint the dialog we are about to ask for.
+func (d *Dispatcher) ActiveCount() int {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.cancels)
+}
+
 // Cancel aborts and marks cancelled.
 func (d *Dispatcher) Cancel(id int64) error {
 	if err := d.store.SetTransferState(id, "cancelled", nil); err != nil {

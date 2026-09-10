@@ -32,7 +32,7 @@ anything in Phase 2.
 | # | Item | Size | Notes |
 |---|---|---|---|
 | 2.1 | **Drag and drop** | L | Cross-pane drop queues a transfer; drop on a folder row targets it; same-pane drop onto a folder moves (destructive — needs confirmation). Explicitly excludes drag in/out of Explorer. |
-| 2.2 | **Close-guard dialog + close-to-pill** | M | Design recovered and committed at `docs/design/close-guard.md` (it was never in the repo — it survived only in a workflow journal outside it). Wails v2 has no tray, so the mini pill is the answer; `OnBeforeClose` must emit-and-return, never block. **Blocked on two decisions** — see the questions logged below. |
+| 2.2 | ~~**Close-guard dialog + close-to-pill**~~ | M | **Done in 1.1.8** (WP-B1 + WP-F1, the must-ship pair). `OnBeforeClose` emits and returns on the UI thread — no channel wait, no WaitGroup, no SQL — and the answer arrives later through ConfirmQuit/CancelQuit/CloseToPill. Three escapes keep the window closable: the quit latch, a second close gesture, and a 2 s force-quit if the frontend never acks. `ui.close_action` (ask/quit/pill) applies only while transfers are RUNNING, so an idle app always closes instantly. WP-B2 (graceful drain) and B3/F2/F3 remain. |
 | 2.3 | ~~**Folder tree children cache**~~ | S | **Done in 1.1.8.** `frontend/src/lib/treeCache.ts` holds children, expansion and failed-listing markers keyed by source+path, outside React so a branch survives collapsing its parent and closing the sidebar. Invalidated subtree-wide by `fs:changed` and purged per source on connect/disconnect. Measured: re-expand went from 1 listing to 0, restoring a collapsed branch from N to 0. Also fixed a staleness bug this uncovered — every remote root is "/", so switching a pane between sites showed the previous server's folders. |
 | 2.4 | **Upload throughput** | ? | Blocked on measurement: 8-lane and 16-lane numbers on an empty queue. 1 lane = 35 KiB/s vs 3 lanes = 905 KiB/s is 26×, which points at per-stream collapse on the link rather than warpseed. |
 
@@ -41,16 +41,13 @@ anything in Phase 2.
 Raised by the Phase 2 mapping on 2026-09-08. Each changes what gets built, so they are decisions
 rather than implementation detail.
 
-**2.2 close guard**
-1. With `ui.close_action = 'pill'`, what actually closes the app? Read literally, the design has the
-   pill's X re-enter the same guard and the guard's pill branch minimise to the pill — a window that
-   can never be closed by its X. Either the pill branch falls through to allow on a second gesture,
-   or the guard must offer an explicit quit.
-2. `running == 0` but the queue holds pending rows: the design says allow, so the app closes silently
-   with 200 transfers queued. That matches today's behaviour exactly, and is arguably still wrong.
-3. The close guard versus the shared confirm slot: `useUiStore.confirm` is a SINGLE slot and a second
-   `askConfirm` silently replaces the first, whose `onConfirm` then never fires. Decide whether the
-   guard uses that slot or stays a separate component that can coexist with it.
+**2.2 close guard — RESOLVED 2026-09-10 by reading the recovered design**
+1. ~~What closes the app with `close_action = 'pill'`?~~ The setting is scoped to *"when closing with
+   transfers running"*: with nothing running `decideClose` always allows, whatever the preference. No
+   un-closable window, and `TestCloseGuardAlwaysHasAnExit` pins it for every preference value.
+2. ~~`running == 0` with pending rows.~~ Allow, per the design, matching today's behaviour exactly.
+3. ~~Guard versus the shared confirm slot.~~ The guard is its own component with its own store flag,
+   so it cannot collide with `askConfirm`.
 
 **2.1 drag and drop**
 4. Cross-pane drop where both panes are the SAME source (both local, or the same site): reject with a

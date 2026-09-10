@@ -54,6 +54,7 @@ interface UiState {
   progress: Record<number, ProgressSample>;
   queueOpen: boolean;
   settingsOpen: boolean;
+  closeGuardOpen: boolean;
   viewMode: "browse" | "flight" | "deck" | "timeline";
   confirm: PromptSpec | null;
   miniMode: boolean;
@@ -74,6 +75,7 @@ interface UiState {
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
+  setCloseGuardOpen: (open: boolean) => void;
   /** Raise a confirmation. Destructive actions go through this rather than
       calling their IPC directly; see askConfirm's note. */
   askConfirm: (spec: PromptSpec) => void;
@@ -102,6 +104,7 @@ export const useUiStore = create<UiState>((set) => ({
   progress: {},
   queueOpen: false,
   settingsOpen: false,
+  closeGuardOpen: false,
   confirm: null,
   viewMode: "browse",
   miniMode: false,
@@ -169,6 +172,7 @@ export const useUiStore = create<UiState>((set) => ({
   },
   setQueueOpen: (queueOpen) => set({ queueOpen }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
+  setCloseGuardOpen: (closeGuardOpen) => set({ closeGuardOpen }),
 
   // Every destructive action asks first, from one place, so the wording and
   // the escape hatch stay consistent and no new delete button can quietly

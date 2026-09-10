@@ -105,6 +105,7 @@ export default function SettingsDialog() {
   // Legacy stored ids (v3 themes, "dark"/"light", "system") coerce to v4.
   const theme: ThemePref = coerceTheme(cfg["ui.theme"] ?? null);
   const bwMode = cfg["bw.mode"] || "off";
+  const closeAction = cfg["ui.close_action"] || "ask";
 
   // Hyperlane draws its lanes from the same connection budget the transfer
   // caps set, so a budget below the lane count silently narrows it. That
@@ -383,6 +384,38 @@ export default function SettingsDialog() {
           <p className="set-note">
             Upload speed usually caps out around 3 lanes — more connections cost
             handshakes without adding throughput.
+          </p>
+        </section>
+
+        <section className="set-section">
+          <h3>Closing</h3>
+          <div
+            className="segmented"
+            role="radiogroup"
+            aria-label="When closing with transfers running"
+          >
+            {[
+              ["ask", "Ask"],
+              ["quit", "Close"],
+              ["pill", "Minimize to pill"],
+            ].map(([v, label]) => (
+              <button
+                key={v}
+                className={closeAction === v ? "seg--on" : ""}
+                role="radio"
+                aria-checked={closeAction === v}
+                onClick={() => put("ui.close_action", v)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="set-note">
+            Unfinished transfers always resume the next time you open warpseed.
+            Choosing &ldquo;Close&rdquo; skips the confirmation; choosing
+            &ldquo;Minimize to pill&rdquo; shrinks the window instead of closing
+            it. With nothing transferring, warpseed closes straight away
+            whichever you pick.
           </p>
         </section>
 

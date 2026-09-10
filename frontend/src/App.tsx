@@ -6,6 +6,7 @@ import MiniView from "./components/MiniView";
 import TimelineView from "./components/TimelineView";
 import FlightView from "./components/FlightView";
 import { invalidateDir, purgeSource } from "./lib/treeCache";
+import CloseGuardDialog from "./components/CloseGuardDialog";
 import ConfirmDialog from "./components/ConfirmDialog";
 import UpdateBanner from "./components/UpdateBanner";
 import HostKeyDialog from "./components/HostKeyDialog";
@@ -334,6 +335,7 @@ export default function App() {
       <QuickConnect />
       <SettingsDialog />
       <HostKeyDialog />
+      <CloseGuardDialog />
       <ConfirmDialog />
       <Toasts />
     </div>

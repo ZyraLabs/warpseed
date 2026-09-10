@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/sftp"
@@ -50,6 +51,14 @@ type App struct {
 
 	mini         bool // window currently shrunk to the pill
 	miniW, miniH int  // window geometry to restore when mini mode ends
+
+	// Close-guard latches. Atomics, not mutex-guarded fields: beforeClose
+	// reads them on the Windows UI thread, where taking a lock another
+	// goroutine holds would stop the message pump.
+	quitting     atomic.Bool  // set once; makes beforeClose fall through
+	closePending atomic.Bool  // a guard dialog is outstanding
+	closeAcked   atomic.Bool  // the frontend confirmed the dialog is up
+	closeAction  atomic.Value // string: "ask" | "quit" | "pill"
 }
 
 func NewApp() *App {
@@ -138,6 +147,8 @@ func (a *App) startup(ctx context.Context) {
 		log.Printf("queue: requeued %d interrupted transfer(s)", n)
 	}
 
+	// Cached so the close guard never touches SQLite on the UI thread.
+	a.closeAction.Store(store.Setting("ui.close_action", "ask"))
 	a.dispatcher = dispatch.New(store, a.sink, a.dialTransfers)
 	go a.dispatcher.Run(ctx)
 	a.startUpdateCheck()
@@ -1505,6 +1516,141 @@ func (a *App) ResolveConflicts(ids []int64, action string) (ConflictResult, erro
 	return res, nil
 }
 
+// --- Close guard ---
+//
+// Closing warpseed while transfers run used to be a hard kill: WM_CLOSE went
+// straight through to the window teardown with nothing asked and nothing
+// stopped. Progress survived — every lane checkpoints — but the user was never
+// told, and a 50 GB overnight run looked like it had simply vanished.
+
+type closeDecision int
+
+const (
+	closeAllow closeDecision = iota // let the window close now
+	closeAsk                        // show the dialog, veto the close
+	closePill                       // shrink to the pill, veto the close
+)
+
+// closeAckTimeout bounds how long Go waits for the frontend to confirm the
+// dialog is on screen before quitting anyway.
+const closeAckTimeout = 2 * time.Second
+
+// decideClose is the whole close-guard policy, deliberately free of Wails
+// calls so it can be tested without a window.
+//
+// Note what it does NOT do: with nothing running it always allows, whatever
+// the preference says. ui.close_action answers "what should the X button do
+// while transfers are running" — an idle app closes instantly, exactly as it
+// always has, and that is also what stops "minimize to pill" from producing a
+// window whose X can never close it.
+func decideClose(quitting, pending bool, running int, action string) closeDecision {
+	if quitting {
+		return closeAllow // second pass from runtime.Quit — MUST fall through
+	}
+	if pending {
+		return closeAllow // a second close gesture is the user insisting
+	}
+	if running == 0 {
+		return closeAllow // idle app closes instantly, exactly as before
+	}
+	switch action {
+	case "quit":
+		return closeAllow
+	case "pill":
+		return closePill
+	default:
+		return closeAsk
+	}
+}
+
+// beforeClose runs ON THE WINDOWS UI THREAD, synchronously inside the WM_CLOSE
+// wndproc. It must return immediately: blocking here stops the message pump
+// that WebView2 needs in order to paint the very dialog we are asking for, so
+// waiting on a channel, a WaitGroup or a database query would deadlock the app
+// against itself. Emit and return; the answer arrives later through
+// ConfirmQuit / CancelQuit / CloseToPill.
+func (a *App) beforeClose(ctx context.Context) (prevent bool) {
+	if a.dispatcher == nil { // queue DB failed to open; startup returned early
+		return false
+	}
+	action, _ := a.closeAction.Load().(string)
+	if action == "" {
+		action = "ask"
+	}
+	switch decideClose(a.quitting.Load(), a.closePending.Load(), a.dispatcher.ActiveCount(), action) {
+	case closeAllow:
+		a.quitting.Store(true) // a second gesture must never be vetoed again
+		return false
+	case closePill:
+		a.restoreForDialog(ctx)
+		a.SetMiniMode(true)
+		a.sink.Emit("app:info", "warpseed is still running in the pill — press Escape to bring the window back")
+		return true
+	}
+
+	a.restoreForDialog(ctx)
+	a.closePending.Store(true)
+	a.closeAcked.Store(false)
+	a.sink.Emit("app:close-requested", map[string]any{
+		"running":      a.dispatcher.ActiveCount(),
+		"checkpointMB": sftpfast.CheckpointEvery >> 20,
+	})
+	// Escape hatch: a frontend that never acks — a crashed webview, a JS error
+	// before the listener mounts — would otherwise leave a window that cannot
+	// be closed. Its own goroutine, so sleeping here is safe.
+	go func() {
+		time.Sleep(closeAckTimeout)
+		if a.closePending.Load() && !a.closeAcked.Load() {
+			log.Printf("close guard: frontend never acknowledged in %s — quitting", closeAckTimeout)
+			a.quitting.Store(true)
+			wruntime.Quit(a.ctx)
+		}
+	}()
+	return true
+}
+
+// restoreForDialog puts the window somewhere a modal can actually be seen:
+// out of the pill, un-minimised, in front.
+func (a *App) restoreForDialog(ctx context.Context) {
+	a.mu.Lock()
+	mini := a.mini
+	a.mu.Unlock()
+	if mini {
+		// Guarded: SetMiniMode(false) when never in mini mode force-resizes
+		// the window to its default geometry.
+		a.SetMiniMode(false)
+	}
+	wruntime.WindowUnminimise(ctx)
+	wruntime.WindowShow(ctx)
+}
+
+// AckCloseDialog tells Go the guard dialog is on screen, disarming the
+// no-answer timeout. The frontend calls it the instant it receives
+// app:close-requested.
+func (a *App) AckCloseDialog() { a.closeAcked.Store(true) }
+
+// ConfirmQuit closes the app for real. runtime.Quit re-enters beforeClose,
+// which is why the quitting latch exists: without it the second pass would
+// raise the dialog again and the app could never exit.
+func (a *App) ConfirmQuit() {
+	a.quitting.Store(true)
+	wruntime.Quit(a.ctx)
+}
+
+// CancelQuit dismisses the guard and re-arms it for the next close gesture.
+func (a *App) CancelQuit() {
+	a.closePending.Store(false)
+	a.closeAcked.Store(false)
+}
+
+// CloseToPill answers the guard by shrinking to the ambient pill instead of
+// quitting. Nothing is interrupted.
+func (a *App) CloseToPill() {
+	a.closePending.Store(false)
+	a.closeAcked.Store(false)
+	a.SetMiniMode(true)
+}
+
 // --- Bookmark bindings ---
 //
 // siteID 0 is the local filesystem, matching the storage convention.
@@ -1629,6 +1775,9 @@ var settingValidators = map[string]func(string) error{
 	// data-safety fixes — are exactly the ones who would never find an
 	// off-by-default switch.
 	"updates.check": oneOf("0", "1"),
+	// Unlisted keys are hard-rejected, so this line is mandatory for the
+	// setting to be writable at all.
+	"ui.close_action": oneOf("ask", "quit", "pill"),
 	// "dark"/"light" are the pre-v3 names, still accepted so an existing
 	// setting keeps working; the frontend maps them to the new themes.
 	"ui.theme":         oneOf("clay", "cobalt", "iris", "system", "flightdeck", "drafting", "press", "nightshift", "dark", "light"),
@@ -1719,6 +1868,10 @@ func (a *App) SetSetting(key, value string) error {
 	}
 	if err := a.store.SetSetting(key, value); err != nil {
 		return err
+	}
+	if key == "ui.close_action" {
+		// Keep the cache the close guard reads in step with the store.
+		a.closeAction.Store(value)
 	}
 	if key == "log.verbose" {
 		on := value == "1"

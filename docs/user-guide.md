@@ -251,6 +251,23 @@ hold up the rest of the queue.
 
 This applies to uploads as well — "incoming" is whichever file is being sent.
 
+### Closing warpseed
+
+Closing with transfers running asks first, and tells you what it means: the
+progress is saved, warpseed restarts those transfers next time you open it, and
+each picks up from its last checkpoint — at most about 8 MB per connection is
+re-sent. You can keep warpseed open, close and resume later, or minimize to the
+pill and leave everything running.
+
+Unfinished transfers keep their data in a placeholder file beside the
+destination, ending `.wspart` or `.wschunk` — on the server for uploads. A
+`.wschunk` already shows the final file size but is not finished. Leave those
+files alone; warpseed needs them to resume.
+
+With nothing transferring, warpseed closes straight away. **Settings → Closing**
+chooses what the X button does when transfers *are* running: ask, close anyway,
+or minimize to the pill.
+
 ### Before anything is deleted
 
 Cancelling a transfer, clearing cancelled transfers from the queue, deleting
