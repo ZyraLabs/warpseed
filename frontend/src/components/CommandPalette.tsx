@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { connectAndHome, disconnectSite, getSettings, localStart } from "../ipc";
 import { useUiStore } from "../store";
 import type { PaneCmd } from "./FilePane";
+import { queueCmd } from "./QueueDock";
 import {
   ArrowUp,
   Check,
@@ -10,6 +11,8 @@ import {
   Folder,
   File,
   Monitor,
+  Pause,
+  Play,
   Refresh,
   Search,
   Sliders,
@@ -37,6 +40,7 @@ export default function CommandPalette() {
   const connStates = useUiStore((s) => s.connStates);
   const setPane = useUiStore((s) => s.setPane);
   const setQuickConnect = useUiStore((s) => s.setQuickConnect);
+  const queuePaused = useUiStore((s) => s.queuePaused);
 
   const [query, setQuery] = useState("");
   const [sel, setSel] = useState(0);
@@ -80,6 +84,16 @@ export default function CommandPalette() {
         hint: "Ctrl+,",
         run: close(() => useUiStore.getState().setSettingsOpen(true)),
       },
+      {
+        label: queuePaused ? "Queue: resume" : "Queue: pause",
+        icon: queuePaused ? <Play size={15} /> : <Pause size={15} />,
+        run: close(() => queueCmd("toggle-pause")),
+      },
+      {
+        label: "Queue: cancel all queued",
+        icon: <Close size={15} />,
+        run: close(() => queueCmd("cancel-queued")),
+      },
     ];
     for (const s of sites) {
       base.push({
@@ -106,7 +120,7 @@ export default function CommandPalette() {
       }
     }
     return base;
-  }, [active, sites, connStates, setOpen, setPane, setQuickConnect]);
+  }, [active, sites, connStates, setOpen, setPane, setQuickConnect, queuePaused]);
 
   const filtered = useMemo(() => {
     if (!query) return items;

@@ -144,6 +144,7 @@ function finish(t: Transfer) {
 }
 
 function dispatchNext() {
+  if (state.settings["queue.paused"] === "1") return;
   const next = state.transfers.find((t) => t.state === "pending");
   if (!next) return;
   startSim(next);
@@ -404,6 +405,55 @@ const App = {
       state.sim.delete(id);
       setState(t, "cancelled");
     }
+  },
+  // Bulk cancel marks the rows and emits once, as the dispatcher does; a
+  // finished row is never touched, so the count can be below what was asked.
+  async CancelTransfers(ids: number[]) {
+    const want = new Set(ids);
+    let n = 0;
+    for (const t of state.transfers) {
+      if (!want.has(t.id) || t.state === "completed" || t.state === "cancelled") continue;
+      state.sim.delete(t.id);
+      t.state = "cancelled";
+      t.conflict = null;
+      t.updatedAt = new Date().toISOString();
+      n++;
+    }
+    emit("queue:changed", null);
+    return n;
+  },
+  async CancelQueuedTransfers() {
+    let n = 0;
+    for (const t of state.transfers) {
+      if (t.state !== "pending" && t.state !== "dispatched" && t.state !== "paused") continue;
+      t.state = "cancelled";
+      t.conflict = null;
+      t.updatedAt = new Date().toISOString();
+      n++;
+    }
+    emit("queue:changed", null);
+    return n;
+  },
+  // Queue-wide pause: running rows go back to pending with their bytes kept,
+  // and nothing starts until resumed. Persisted in settings like the real one.
+  async SetQueuePaused(on: boolean) {
+    state.settings["queue.paused"] = on ? "1" : "0";
+    if (on) {
+      for (const t of state.transfers) {
+        if (t.state !== "active") continue;
+        t.bytesDone = state.sim.get(t.id)?.bytes ?? t.bytesDone;
+        state.sim.delete(t.id);
+        t.state = "pending";
+        t.attempt = 0;
+        t.error = null;
+      }
+    }
+    emit("queue:paused", { paused: on });
+    emit("queue:changed", null);
+    if (!on) dispatchNext();
+  },
+  async QueuePaused() {
+    return state.settings["queue.paused"] === "1";
   },
   async ClearDoneTransfers() {
     const n = state.transfers.filter(

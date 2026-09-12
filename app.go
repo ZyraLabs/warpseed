@@ -150,6 +150,9 @@ func (a *App) startup(ctx context.Context) {
 	// Cached so the close guard never touches SQLite on the UI thread.
 	a.closeAction.Store(store.Setting("ui.close_action", "ask"))
 	a.dispatcher = dispatch.New(store, a.sink, a.dialTransfers)
+	if a.dispatcher.Paused() {
+		log.Printf("queue: starting paused")
+	}
 	go a.dispatcher.Run(ctx)
 	a.startUpdateCheck()
 }
@@ -1267,6 +1270,49 @@ func (a *App) ResumeTransfer(id int64) error { return a.dispatcher.Resume(id) }
 // CancelTransfer aborts a transfer.
 func (a *App) CancelTransfer(id int64) error { return a.dispatcher.Cancel(id) }
 
+// CancelTransfers cancels the named rows at once — the selection the user
+// made in the dock. Reports how many were actually cancelled; a row that
+// finished while the confirmation sat open is not touched, so the number
+// can be lower than the count the dialog showed.
+func (a *App) CancelTransfers(ids []int64) (int, error) {
+	if a.store == nil {
+		return 0, errNoStore
+	}
+	return a.dispatcher.CancelMany(ids)
+}
+
+// CancelQueuedTransfers cancels everything waiting to run — queued, held
+// for a decision, or paused — and leaves running transfers alone. This is
+// the "I queued a whole folder by mistake" button; before it, the only way
+// out was one row at a time, and restarting did not help because the queue
+// is deliberately persistent.
+func (a *App) CancelQueuedTransfers() (int, error) {
+	if a.store == nil {
+		return 0, errNoStore
+	}
+	return a.dispatcher.CancelQueued()
+}
+
+// SetQueuePaused stops or restarts the whole queue. Paused means nothing
+// starts and whatever was running goes back to pending with its progress
+// kept; the flag persists, so a paused queue is still paused after a
+// restart.
+func (a *App) SetQueuePaused(on bool) error {
+	if a.store == nil {
+		return errNoStore
+	}
+	return a.dispatcher.SetPaused(on)
+}
+
+// QueuePaused reports the queue-wide pause for the dock's first paint;
+// changes arrive on the queue:paused event.
+func (a *App) QueuePaused() (bool, error) {
+	if a.store == nil {
+		return false, errNoStore
+	}
+	return a.dispatcher.Paused(), nil
+}
+
 // ClearDoneTransfers removes completed and cancelled rows.
 //
 // Cancelled rows get the same placeholder sweep as failed ones, and the same
@@ -1286,13 +1332,12 @@ func (a *App) ClearDoneTransfers() (ClearResult, error) {
 	if err != nil {
 		return res, err
 	}
-	going := make([]int64, len(cancelled))
-	for i, t := range cancelled {
-		going[i] = t.ID
-	}
+	// No batch list: OtherLiveTransfersForDst never counts cancelled rows,
+	// so naming them is redundant — and past tens of thousands of rows the
+	// list would exceed SQLite's bound-parameter ceiling and keep every row.
 	clear := make([]int64, 0, len(cancelled))
 	for _, t := range cancelled {
-		if !a.removeParts(t, going) {
+		if !a.removeParts(t, nil) {
 			res.Kept++
 			continue
 		}
@@ -1481,10 +1526,13 @@ func (a *App) ResolveConflicts(ids []int64, action string) (ConflictResult, erro
 				res.Failed++
 				continue
 			}
-			// Cancel leaves the hold in place; clear it so the row reads as
-			// cancelled rather than as still waiting for an answer.
+			// The cancel clears the hold along with the state for any row
+			// it marks. This clears it for the ones it did not: a row
+			// cancelled by an older build kept its conflict column, and
+			// every "held" check keys on that alone, so the decision bar
+			// would stick forever with no way left to answer it.
 			if _, rerr := a.store.ResolveConflict(t.ID, ""); rerr != nil {
-				log.Printf("resolve conflict: clear hold %d: %v", t.ID, rerr)
+				log.Printf("resolve conflict: clear stale hold %d: %v", t.ID, rerr)
 			}
 			res.Skipped++
 		case queue.ActionRename:
@@ -1778,6 +1826,9 @@ var settingValidators = map[string]func(string) error{
 	// Unlisted keys are hard-rejected, so this line is mandatory for the
 	// setting to be writable at all.
 	"ui.close_action": oneOf("ask", "quit", "pill"),
+	// Queue on launch. queue.paused itself is written by the dispatcher, not
+	// by the settings dialog.
+	"queue.start_paused": oneOf("0", "1"),
 	// "dark"/"light" are the pre-v3 names, still accepted so an existing
 	// setting keeps working; the frontend maps them to the new themes.
 	"ui.theme":         oneOf("clay", "cobalt", "iris", "system", "flightdeck", "drafting", "press", "nightshift", "dark", "light"),

@@ -195,7 +195,22 @@ from different sites coexist. The queue is persisted to disk, so closing warpsee
 or a reboot) loses nothing — on next launch, unfinished transfers are
 still there and resume from the exact byte they reached.
 
-**States:** queued · active · paused · completed · failed. Failed rows
+**Pause queue**, at the left of the queue toolbar, stops the whole queue:
+nothing new starts, and running transfers stop and return to the queue with
+their progress kept. **Resume queue** starts it again. The pause is
+remembered across a restart, and Settings → **Queue on launch** → *Start
+paused* makes every launch begin stopped, so last night's queue waits for
+you instead of starting the moment the window opens.
+
+To cancel several rows at once, click one to select it, Ctrl+click to add or
+remove rows, Shift+click for a range, then press **Cancel selected** (or
+Delete). **Cancel all queued** cancels everything waiting in the queue —
+queued rows, paused rows, and rows a queue pause put back; the whole queue,
+not just the rows on screen — and leaves running transfers alone. It always
+asks first, and says how many of those rows hold part-transferred data;
+Cancel selected asks only when data would be lost.
+
+**States:** queued · active · paused · completed · failed · cancelled. Failed rows
 show a plain-language reason and a **retry** button. Completed rows stay
 for the session so you can audit them; **Clear done** purges them.
 
@@ -254,9 +269,10 @@ This applies to uploads as well — "incoming" is whichever file is being sent.
 ### Closing warpseed
 
 Closing with transfers running asks first, and tells you what it means: the
-progress is saved, warpseed restarts those transfers next time you open it, and
-each picks up from its last checkpoint — at most about 8 MB per connection is
-re-sent. You can keep warpseed open, close and resume later, or minimize to the
+progress is saved, those transfers are still queued next time you open
+warpseed (and start straight away unless the queue is paused or set to start
+paused), and each picks up from its last checkpoint — at most about 8 MB per
+connection is re-sent. You can keep warpseed open, close and resume later, or minimize to the
 pill and leave everything running.
 
 Unfinished transfers keep their data in a placeholder file beside the

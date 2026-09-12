@@ -118,6 +118,17 @@
   color: var(--state-error);
   background: color-mix(in srgb, var(--state-error) 10%, transparent);
 }
+.dock__strip .chip-paused {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 7px;
+  font-size: var(--text-2xs);
+  font-weight: 600;
+  color: var(--state-paused);
+  background: color-mix(in srgb, var(--state-paused) 12%, transparent);
+}
 .dock__strip .grow {
   flex: 1;
 }
@@ -171,6 +182,28 @@
 .dock__header button:hover {
   background: var(--surface-2);
   color: var(--text);
+}
+/* The pause toggle wears the paused amber while the queue is stopped, so
+   the state is visible without reading the label. */
+.dock__header button.hdr--on {
+  color: var(--state-paused);
+  background: color-mix(in srgb, var(--state-paused) 14%, transparent);
+}
+.dock__header button.hdr--on:hover {
+  background: color-mix(in srgb, var(--state-paused) 22%, transparent);
+}
+.dock__header button.hdr--danger:hover {
+  color: var(--state-error);
+  background: color-mix(in srgb, var(--state-error) 14%, var(--surface-2));
+}
+.dock__body:focus {
+  outline: none;
+}
+/* The body owns Delete, Escape and Ctrl+A once a row is selected, so
+   keyboard users need to see when it has focus. */
+.dock__body:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* A held transfer is not an error and not progress — it is a question. It
@@ -254,6 +287,11 @@
    scrollbar is honest; each mounted row is pinned to its own offset. */
 .dock__list {
   position: relative;
+}
+.trow--selected,
+.trow--selected:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent);
 }
 .trow--virtual {
   position: absolute;

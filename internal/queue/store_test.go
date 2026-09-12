@@ -118,12 +118,8 @@ func TestRecoverInterruptedResetsTheRetryLadder(t *testing.T) {
 		t.Fatalf("progress: %v", err)
 	}
 	boom := "connection reset"
-	if err := s.ScheduleRetry(id, "2026-08-01T00:00:05Z", &boom); err != nil {
-		t.Fatalf("retry 1: %v", err)
-	}
-	if err := s.ScheduleRetry(id, "2026-08-01T00:00:10Z", &boom); err != nil {
-		t.Fatalf("retry 2: %v", err)
-	}
+	spendAttempt(t, s, id, "2026-08-01T00:00:05Z", &boom)
+	spendAttempt(t, s, id, "2026-08-01T00:00:10Z", &boom)
 	if err := s.SetTransferState(id, "active", nil); err != nil {
 		t.Fatalf("activate: %v", err)
 	}

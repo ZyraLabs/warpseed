@@ -26,6 +26,9 @@ export default function CloseGuardDialog() {
   const [dontAsk, setDontAsk] = useState(false);
   const transfers = useUiStore((s) => s.transfers);
   const progress = useUiStore((s) => s.progress);
+  // Whether the queue starts on the other side of the restart is the
+  // user's setting, not a promise this dialog can make on its own.
+  const queuePaused = useUiStore((s) => s.queuePaused);
 
   useEffect(
     () =>
@@ -101,8 +104,8 @@ export default function CloseGuardDialog() {
 
         <p id="closeguard-desc">
           {n === 1
-            ? `Its progress is saved. warpseed restarts it automatically the next time you open it and picks up from the last checkpoint, so at most about ${mb} MB is re-sent.`
-            : `Their progress is saved. warpseed restarts them automatically the next time you open it and each picks up from its last checkpoint, so at most about ${mb} MB per connection is re-sent.`}
+            ? `Its progress is saved. It is still queued the next time you open warpseed and picks up from the last checkpoint, so at most about ${mb} MB is re-sent.`
+            : `Their progress is saved. They are still queued the next time you open warpseed and each picks up from its last checkpoint, so at most about ${mb} MB per connection is re-sent.`}
         </p>
 
         <p>
@@ -116,9 +119,12 @@ export default function CloseGuardDialog() {
         {queued > 0 && (
           <p>
             {queued === 1
-              ? "The queued transfer is untouched and starts when you're back."
-              : `${queued} queued transfers are untouched and start when you're back.`}
+              ? `The queued transfer is untouched and ${queuePaused ? "waits until you resume the queue" : "starts when you're back"}.`
+              : `${queued} queued transfers are untouched and ${queuePaused ? "wait until you resume the queue" : "start when you're back"}.`}
           </p>
+        )}
+        {queuePaused && (
+          <p>The queue is paused, so nothing starts until you resume it.</p>
         )}
 
         <div className="dialog__actions dialog__actions--split">
@@ -128,14 +134,14 @@ export default function CloseGuardDialog() {
               checked={dontAsk}
               onChange={(e) => setDontAsk(e.target.checked)}
             />
-            Don&rsquo;t ask again — always close and resume
+            Don&rsquo;t ask again — always close and keep the queue
           </label>
           <span className="grow" />
           <button className="btn" onClick={keep}>
             Keep warpseed open
           </button>
           <button className="btn" onClick={quit}>
-            Close and resume later
+            Close and pick up later
           </button>
           <button className="btn btn--primary" autoFocus onClick={pill}>
             Minimize to pill

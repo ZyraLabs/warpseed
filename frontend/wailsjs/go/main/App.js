@@ -30,6 +30,14 @@ export function CancelTransfer(arg1) {
   return window['go']['main']['App']['CancelTransfer'](arg1);
 }
 
+export function CancelTransfers(arg1) {
+  return window['go']['main']['App']['CancelTransfers'](arg1);
+}
+
+export function CancelQueuedTransfers() {
+  return window['go']['main']['App']['CancelQueuedTransfers']();
+}
+
 export function CheckForUpdate() {
   return window['go']['main']['App']['CheckForUpdate']();
 }
@@ -180,6 +188,14 @@ export function SetMiniMode(arg1) {
 
 export function SetSetting(arg1, arg2) {
   return window['go']['main']['App']['SetSetting'](arg1, arg2);
+}
+
+export function SetQueuePaused(arg1) {
+  return window['go']['main']['App']['SetQueuePaused'](arg1);
+}
+
+export function QueuePaused() {
+  return window['go']['main']['App']['QueuePaused']();
 }
 
 export function SetSiteRemotePath(arg1, arg2) {

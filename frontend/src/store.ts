@@ -53,6 +53,8 @@ interface UiState {
   transfers: Transfer[];
   progress: Record<number, ProgressSample>;
   queueOpen: boolean;
+  /** Queue-wide pause, mirrored from the backend (queue:paused). */
+  queuePaused: boolean;
   settingsOpen: boolean;
   closeGuardOpen: boolean;
   viewMode: "browse" | "flight" | "deck" | "timeline";
@@ -74,6 +76,7 @@ interface UiState {
   applyProgress: (id: number, bytes: number, size: number, chunks?: number[]) => void;
   patchTransferState: (id: number, state: string, error?: string) => void;
   setQueueOpen: (open: boolean) => void;
+  setQueuePaused: (on: boolean) => void;
   setSettingsOpen: (open: boolean) => void;
   setCloseGuardOpen: (open: boolean) => void;
   /** Raise a confirmation. Destructive actions go through this rather than
@@ -103,6 +106,7 @@ export const useUiStore = create<UiState>((set) => ({
   transfers: [],
   progress: {},
   queueOpen: false,
+  queuePaused: false,
   settingsOpen: false,
   closeGuardOpen: false,
   confirm: null,
@@ -171,6 +175,7 @@ export const useUiStore = create<UiState>((set) => ({
     }));
   },
   setQueueOpen: (queueOpen) => set({ queueOpen }),
+  setQueuePaused: (queuePaused) => set({ queuePaused }),
   setSettingsOpen: (settingsOpen) => set({ settingsOpen }),
   setCloseGuardOpen: (closeGuardOpen) => set({ closeGuardOpen }),
 

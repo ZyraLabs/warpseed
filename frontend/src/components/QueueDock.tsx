@@ -2,6 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { ComponentType } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
+  cancelQueuedTransfers,
+  cancelTransfers,
   clearDoneTransfers,
   parseConflict,
   resolveConflicts,
@@ -9,9 +11,12 @@ import {
   getSettings,
   on,
   pauseTransfer,
+  queuePaused,
   resumeTransfer,
   retryFailedTransfers,
+  setQueuePaused,
   setSetting,
+  type QueuePausedEvent,
   type Transfer,
   type TransferProgress,
   type TransferState,
@@ -104,6 +109,19 @@ const liveRank = (t: Transfer): number => (t.state === "active" || t.state === "
 
 /** Ascending state sort surfaces what needs attention: errors first, then
     running work, with finished rows at the bottom. */
+/** A row that can still be cancelled: anything not already finished. */
+const cancellable = (t: Transfer): boolean => t.state !== "completed" && t.state !== "cancelled";
+/** A row waiting on the dispatcher — what "Cancel all queued" acts on.
+    Mirrors the store's queuedStates. */
+const waiting = (t: Transfer): boolean =>
+  t.state === "pending" || t.state === "dispatched" || t.state === "paused";
+
+/** Commands the palette sends the dock (same pattern as ws:panecmd). */
+export type QueueCmd = "toggle-pause" | "cancel-queued";
+export function queueCmd(cmd: QueueCmd) {
+  window.dispatchEvent(new CustomEvent("ws:queuecmd", { detail: cmd }));
+}
+
 const STATE_RANK: Record<string, number> = {
   failed: 0,
   active: 1,
@@ -126,7 +144,53 @@ export default function QueueDock() {
   const patchTransferState = useUiStore((s) => s.patchTransferState);
   const sites = useUiStore((s) => s.sites);
   const askConfirm = useUiStore((s) => s.askConfirm);
+  const paused = useUiStore((s) => s.queuePaused);
+  const setPaused = useUiStore((s) => s.setQueuePaused);
   const [sort, setSort] = useState<QSort>({ key: "added", desc: false });
+  // Row selection, for cancelling several at once. Local to the dock: no
+  // other view acts on it, and it is cleared when the rows it names go.
+  const [selected, setSelected] = useState<Set<number>>(() => new Set());
+  const anchor = useRef<number | null>(null);
+  // A confirmation raised from the dock takes focus and, on close, drops
+  // it on the document body — where the panes' window-level Delete would
+  // act on the file under the cursor. Focus comes back to the dock body
+  // when a dialog the dock opened closes.
+  const refocusOnClose = useRef(false);
+  const confirmOpen = useUiStore((s) => s.confirm !== null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // The listener is live before the first read resolves, so an event
+    // that arrives in between must not be undone by the older answer.
+    let fresh = true;
+    const off = on<QueuePausedEvent>("queue:paused", (p) => {
+      fresh = false;
+      setPaused(p.paused);
+    });
+    void queuePaused()
+      .then((value) => {
+        if (fresh) setPaused(value);
+      })
+      .catch(() => undefined);
+    return off;
+  }, [setPaused]);
+
+  // Drop selected ids whose rows are gone (cleared, or scrolled out of the
+  // list window), so a stale selection can never name rows the user cannot
+  // see.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (prev.size === 0) return prev;
+      const ids = new Set(transfers.map((t) => t.id));
+      let changed = false;
+      const next = new Set<number>();
+      for (const id of prev) {
+        if (ids.has(id)) next.add(id);
+        else changed = true;
+      }
+      return changed ? next : prev;
+    });
+  }, [transfers]);
   // A click during the async hydration read must win over the stale stored
   // value (same rule prefs.ts enforces for the other UI settings).
   const sortTouched = useRef(false);
@@ -285,7 +349,6 @@ export default function QueueDock() {
   // the scroll content. Only the rows in view are mounted: the window can
   // hold up to 2000 unfinished rows and every progress tick re-renders the
   // dock, which is fine for a dozen rows and a stall for two thousand.
-  const bodyRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const [listTop, setListTop] = useState(0);
   const hasRows = rows.length > 0;
@@ -301,6 +364,52 @@ export default function QueueDock() {
   // tick would be the O(rows) work virtualizing was meant to remove.
   const rowsRef = useRef(rows);
   rowsRef.current = rows;
+
+  // Pane conventions (ux-spec §3.6): click selects, Ctrl+click toggles,
+  // Shift+click extends from the anchor over the rows as currently sorted.
+  const selectRow = (id: number, e: React.MouseEvent) => {
+    const multi = e.ctrlKey || e.metaKey;
+    if (e.shiftKey) {
+      // Shift+click extends the ROW selection; the text range the browser
+      // drew on the way there is not what was meant. Cleared here rather
+      // than with user-select:none on the list, which would also stop
+      // anyone copying a failure message out of a row for a bug report.
+      window.getSelection()?.removeAllRanges();
+    }
+    const next = new Set<number>(multi ? selected : []);
+    if (e.shiftKey && anchor.current !== null) {
+      const order = rowsRef.current.map((t) => t.id);
+      const a = order.indexOf(anchor.current);
+      const b = order.indexOf(id);
+      if (a >= 0 && b >= 0) {
+        for (let i = Math.min(a, b); i <= Math.max(a, b); i++) next.add(order[i]);
+        setSelected(next);
+        return;
+      }
+    }
+    if (multi && next.has(id)) next.delete(id);
+    else next.add(id);
+    anchor.current = id;
+    setSelected(next);
+  };
+  const onListKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && selected.size > 0) {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelected(new Set());
+    } else if (e.key === "Delete" || e.key === "F8") {
+      // Always swallowed here, selection or not: the panes bind Delete/F8
+      // at window level, and one that reached them would delete the file
+      // under the pane cursor — silently, if that prompt was suppressed.
+      e.preventDefault();
+      e.stopPropagation();
+      if (selected.size > 0) cancelSelected();
+    } else if (e.key.toLowerCase() === "a" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      e.stopPropagation();
+      setSelected(new Set(rowsRef.current.map((t) => t.id)));
+    }
+  };
   const getItemKey = useCallback((i: number) => rowsRef.current[i].id, []);
   const estimateSize = useCallback(
     (i: number) => {
@@ -335,6 +444,11 @@ export default function QueueDock() {
     }
     return { queued, failed, held, totalBytes };
   }, [transfers]);
+  const waitingCount = useMemo(() => transfers.filter(waiting).length, [transfers]);
+  const selectedCount = useMemo(
+    () => transfers.filter((t) => selected.has(t.id) && cancellable(t)).length,
+    [transfers, selected],
+  );
   // A drive pulled mid-run, or a server that spent an hour refusing
   // connections, fails a whole batch at once. Both of these exist so the
   // recovery is one click rather than one click per file.
@@ -376,6 +490,122 @@ export default function QueueDock() {
       },
     });
   }, [transfers, askConfirm]);
+
+  const togglePause = useCallback(() => {
+    void setQueuePaused(!paused).catch((err: unknown) => toast("error", String(err)));
+  }, [paused]);
+
+  // Cancel the selection. Like confirmCancel for one row: nothing
+  // transferred means nothing to lose, so those go straight away; when
+  // progress is at stake the dialog says what is deleted. The ids are
+  // snapshotted with the count, and the backend re-checks each row is still
+  // unfinished, so what the dialog says is what happens.
+  const cancelSelected = useCallback(() => {
+    // Live progress is read at click time from the store rather than
+    // subscribed: as a dependency it would recreate this callback on
+    // every progress tick.
+    const progress = useUiStore.getState().progress;
+    const rowsToCancel = transfers.filter((t) => selected.has(t.id) && cancellable(t));
+    const ids = rowsToCancel.map((t) => t.id);
+    if (ids.length === 0) return;
+    const run = () => {
+      void cancelTransfers(ids)
+        .then((n) => {
+          toast("success", `Cancelled ${n} transfer${n === 1 ? "" : "s"}`);
+          setSelected(new Set());
+        })
+        .catch((err: unknown) => toast("error", String(err)));
+    };
+    const withData = rowsToCancel.filter(
+      (t) => Math.max(progress[t.id]?.bytes ?? 0, t.bytesDone, 0) > 0,
+    ).length;
+    if (withData === 0) {
+      run();
+      return;
+    }
+    const one = ids.length === 1;
+    refocusOnClose.current = true;
+    let body: string;
+    if (one) {
+      body =
+        "Its part-transferred data is deleted, so this file starts from the beginning if you queue it again. Pause instead to stop it and keep the progress.";
+    } else if (withData === ids.length) {
+      body =
+        "Their part-transferred data is deleted, so these files start from the beginning if you queue them again. Pause instead to stop them and keep the progress.";
+    } else {
+      body = `${withData} of them ${withData === 1 ? "has" : "have"} part-transferred data, which is deleted, so ${withData === 1 ? "that file starts" : "those files start"} from the beginning if you queue ${withData === 1 ? "it" : "them"} again. The rest have not started. Pause instead to stop and keep the progress.`;
+    }
+    // Its own suppress key: agreeing to skip the warning for one named file
+    // is not consent to skip it for a Ctrl+A over a 40 GB upload.
+    askConfirm({
+      suppressKey: "cancel-selected",
+      title: `Cancel ${ids.length} transfer${one ? "" : "s"}?`,
+      body,
+      confirmLabel: one ? "Cancel transfer" : "Cancel transfers",
+      danger: true,
+      onConfirm: run,
+    });
+  }, [transfers, selected, askConfirm]);
+
+  // The "I queued a whole folder by mistake" button. Always confirms: it is
+  // one click on a header button, and it acts on every waiting row,
+  // including ones the list window does not show. Running transfers keep
+  // going — stopping those is what Pause queue is for.
+  const cancelQueued = useCallback(() => {
+    const progress = useUiStore.getState().progress;
+    const rowsWaiting = transfers.filter(waiting);
+    const n = rowsWaiting.length;
+    if (n === 0) return;
+    const held = rowsWaiting.filter((t) => t.conflict).length;
+    // Rows with progress are named by count, not by state: a queue pause
+    // returns running rows to "pending", so the 80%-done overnight download
+    // is waiting like everything else and would be deleted with the rest.
+    const withData = rowsWaiting.filter(
+      (t) => Math.max(progress[t.id]?.bytes ?? 0, t.bytesDone, 0) > 0,
+    ).length;
+    // The list holds at most 2,000 waiting rows; the backend acts on the
+    // whole queue, so past the window BOTH counts are floors, not totals —
+    // and the one that must not be understated is the data one, in the
+    // confirmation the spec says always asks.
+    const capped = n >= 2000;
+    const shown = capped ? `${n.toLocaleString()}+` : `${n}`;
+    const dataCount = capped ? `at least ${withData}` : `${withData}`;
+    refocusOnClose.current = true;
+    // No suppress key, deliberately: this is one click on a header button
+    // that can discard hours of progress, and the ux-spec says it always
+    // confirms.
+    askConfirm({
+      title: `Cancel ${shown} queued transfer${n === 1 ? "" : "s"}?`,
+      body:
+        `Everything waiting in the queue is cancelled — queued rows, paused rows, and rows a queue pause put back${held > 0 ? `, including the ${held} waiting for a decision` : ""}. Running transfers keep going; pause the queue first if you want those stopped too.` +
+        (withData > 0
+          ? ` ${dataCount} of them ${withData === 1 && !capped ? "has" : "have"} part-transferred data, which is deleted — ${withData === 1 && !capped ? "that file starts" : "those files start"} from the beginning if you queue ${withData === 1 && !capped ? "it" : "them"} again. Select the rows you mean and use Cancel selected to keep those.`
+          : ""),
+      confirmLabel: "Cancel queued",
+      danger: true,
+      onConfirm: () => {
+        void cancelQueuedTransfers()
+          .then((k) => toast("success", `Cancelled ${k} queued transfer${k === 1 ? "" : "s"}`))
+          .catch((err: unknown) => toast("error", String(err)));
+      },
+    });
+  }, [transfers, askConfirm]);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const cmd = (e as CustomEvent<QueueCmd>).detail;
+      if (cmd === "toggle-pause") togglePause();
+      else if (cmd === "cancel-queued") cancelQueued();
+    };
+    window.addEventListener("ws:queuecmd", handler);
+    return () => window.removeEventListener("ws:queuecmd", handler);
+  }, [togglePause, cancelQueued]);
+
+  useEffect(() => {
+    if (confirmOpen || !refocusOnClose.current) return;
+    refocusOnClose.current = false;
+    bodyRef.current?.focus();
+  }, [confirmOpen]);
 
   // Cancelled rows can still have data on disk or on a server, so this can
   // legitimately keep some back; saying "cleared" while rows stay on screen
@@ -475,6 +705,12 @@ export default function QueueDock() {
         <span>
           {active.length} active · {counts.queued} queued
         </span>
+        {paused && (
+          <span className="chip-paused" title="Nothing starts until you resume the queue">
+            <Pause size={11} />
+            queue paused
+          </span>
+        )}
         {counts.held > 0 && (
           <span className="chip-held">
             <Warning size={11} />
@@ -493,13 +729,55 @@ export default function QueueDock() {
       </button>
 
       {open && (
-        <div className="dock__body" style={colStyle} ref={bodyRef}>
+        <div
+          className="dock__body"
+          style={colStyle}
+          ref={bodyRef}
+          tabIndex={-1}
+          onKeyDown={onListKey}
+          role="grid"
+          aria-multiselectable="true"
+          aria-label="Transfer queue"
+        >
           {/* The failure actions sit LEFT of the spacer on purpose. The app
               grid stretches to its widest row, so at narrow windows the
               right end of this bar is clipped by an ancestor — measured,
               not assumed. Anything a user needs after a batch failure has
               to stay on the reachable side. */}
           <div className="dock__header">
+            <button
+              className={paused ? "hdr--on" : ""}
+              onClick={togglePause}
+              aria-pressed={paused}
+              title={
+                paused
+                  ? "Resume the queue — waiting transfers start again"
+                  : "Pause the queue — nothing new starts, and running transfers stop and keep their progress"
+              }
+            >
+              {paused ? <Play size={12} /> : <Pause size={12} />}
+              {paused ? "Resume queue" : "Pause queue"}
+            </button>
+            {selectedCount > 0 && (
+              <button
+                className="hdr--danger"
+                onClick={cancelSelected}
+                title="Cancel the selected transfers (Delete)"
+              >
+                <Close size={12} />
+                Cancel selected ({selectedCount})
+              </button>
+            )}
+            {waitingCount > 0 && (
+              <button
+                className="hdr--danger"
+                onClick={cancelQueued}
+                title="Cancel everything waiting in the queue, paused rows included; running ones keep going"
+              >
+                <Close size={12} />
+                Cancel all queued
+              </button>
+            )}
             {counts.failed > 0 && (
               <>
                 <button onClick={retryFailed} title="Requeue every failed transfer, resuming where each stopped">
@@ -544,7 +822,7 @@ export default function QueueDock() {
 
           {/* Column headers double as resize handles — drag the divider on
               the right of a heading to widen it. */}
-          <div className="trow trow--head">
+          <div className="trow trow--head" role="row">
             <button
               className={`trow__icon thead__sort ${sort.key === "state" ? "thead__sort--on" : ""}`}
               role="columnheader"
@@ -640,8 +918,11 @@ export default function QueueDock() {
                   key={t.id}
                   data-index={vi.index}
                   ref={virtualizer.measureElement}
-                  className={`trow trow--virtual trow--${t.state} ${hasError ? "trow--witherror" : ""} ${conflict ? "trow--held" : ""} ${t.direction === "upload" ? "trow--up" : ""}`}
+                  className={`trow trow--virtual trow--${t.state} ${hasError ? "trow--witherror" : ""} ${conflict ? "trow--held" : ""} ${t.direction === "upload" ? "trow--up" : ""} ${selected.has(t.id) ? "trow--selected" : ""}`}
                   style={{ transform: `translateY(${vi.start - listTop}px)` }}
+                  onClick={(e) => selectRow(t.id, e)}
+                  role="row"
+                  aria-selected={selected.has(t.id)}
                 >
                   <span className="trow__icon">
                     <StateIcon size={13} />
@@ -688,7 +969,9 @@ export default function QueueDock() {
                       <div style={{ transform: `scaleX(${pct})` }} />
                     </span>
                   )}
-                  <span className="trow__actions">
+                  {/* Row buttons act on their own row; a click on one must
+                      not also change the selection. */}
+                  <span className="trow__actions" onClick={(e) => e.stopPropagation()}>
                     {conflict ? (
                       <>
                         <button title="Skip — do not transfer this file" onClick={() => resolveOne(t.id, "skip")}>

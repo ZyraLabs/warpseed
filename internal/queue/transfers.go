@@ -324,17 +324,6 @@ func (s *Store) UpdateTransferProgress(id, bytesDone int64) error {
 	return nil
 }
 
-// ScheduleRetry bumps attempt, sets the retry deadline, and requeues.
-func (s *Store) ScheduleRetry(id int64, nextRetryAt string, errMsg *string) error {
-	_, err := s.db.Exec(
-		`UPDATE transfers SET state='pending', attempt=attempt+1, next_retry_at=?, error=?, updated_at=?
-		 WHERE id=?`, nextRetryAt, errMsg, nowUTC(), id)
-	if err != nil {
-		return fmt.Errorf("schedule retry: %w", err)
-	}
-	return nil
-}
-
 // FailedTransfers returns every failed row, uncapped: the caller deletes
 // their leftover placeholders, and a row missing from this list is a
 // .wspart nothing will ever clean up. The UI list is capped
@@ -366,9 +355,7 @@ func (s *Store) transfersInState(state string) ([]Transfer, error) {
 // not a continuation of the ladder that gave up. The recorded byte progress
 // stays, so each one resumes from its .wspart rather than restarting.
 func (s *Store) RetryFailed() (int64, error) {
-	res, err := s.db.Exec(
-		`UPDATE transfers SET state='pending', attempt=0, next_retry_at=NULL,
-		 error=NULL, updated_at=? WHERE state='failed'`, nowUTC())
+	res, err := s.db.Exec(`UPDATE transfers `+requeueSet+` WHERE state='failed'`, nowUTC())
 	if err != nil {
 		return 0, fmt.Errorf("retry failed: %w", err)
 	}
@@ -386,21 +373,22 @@ func (s *Store) ClearFailedByID(ids []int64) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
 	}
-	args := make([]any, len(ids))
-	ph := make([]byte, 0, len(ids)*2)
-	for i, id := range ids {
-		args[i] = id
-		if i > 0 {
-			ph = append(ph, ',')
+	// Batched like the cancelled sweep, and for the same reason: one
+	// statement naming every id would trip SQLite's bound-parameter ceiling
+	// on a big enough batch and clear none of them.
+	var total int64
+	for start := 0; start < len(ids); start += idBatch {
+		end := min(start+idBatch, len(ids))
+		ph, args := placeholders(ids[start:end])
+		res, err := s.db.Exec(
+			`DELETE FROM transfers WHERE state='failed' AND id IN (`+ph+`)`, args...)
+		if err != nil {
+			return total, fmt.Errorf("clear failed: %w", err)
 		}
-		ph = append(ph, '?')
+		n, _ := res.RowsAffected()
+		total += n
 	}
-	res, err := s.db.Exec(
-		`DELETE FROM transfers WHERE state='failed' AND id IN (`+string(ph)+`)`, args...)
-	if err != nil {
-		return 0, fmt.Errorf("clear failed: %w", err)
-	}
-	return res.RowsAffected()
+	return total, nil
 }
 
 // DstIsClaimed reports whether an unfinished row already writes this exact
@@ -447,21 +435,18 @@ func (s *Store) DeletePending(id int64) (int64, error) {
 // which is the exact outcome this guard exists to prevent.
 //
 // Completed rows are excluded: their placeholder was renamed away on
-// success.
+// success. Cancelled rows are excluded too: nothing is coming back for
+// their bytes, so they can never be the reason to keep a placeholder — a
+// cancelled sibling that counted as an owner blocked every later discard
+// of the shared file, and a running row cancelled as part of a batch kept
+// its full-size .wschunk on the seedbox because of the idle row cancelled
+// beside it. Failed rows still count: their data is what a retry resumes.
 func (s *Store) OtherLiveTransfersForDst(going []int64, dst string) (int, error) {
-	args := make([]any, 0, len(going)+1)
-	args = append(args, dst)
-	ph := make([]byte, 0, len(going)*2)
-	for i, id := range going {
-		if i > 0 {
-			ph = append(ph, ',')
-		}
-		ph = append(ph, '?')
-		args = append(args, id)
-	}
-	q := `SELECT COUNT(*) FROM transfers WHERE dst=? AND state<>'completed'`
+	ph, ids := placeholders(going)
+	args := append([]any{dst}, ids...)
+	q := `SELECT COUNT(*) FROM transfers WHERE dst=? AND state IN (` + placeholderOwnerStates + `)`
 	if len(going) > 0 {
-		q += ` AND id NOT IN (` + string(ph) + `)`
+		q += ` AND id NOT IN (` + ph + `)`
 	}
 	var n int
 	if err := s.db.QueryRow(q, args...).Scan(&n); err != nil {
@@ -486,24 +471,22 @@ func (s *Store) ClearCompleted() (int64, error) {
 // the ones whose data it has actually accounted for — deleting the rest
 // would delete the only record that those files exist.
 func (s *Store) ClearCancelledByID(ids []int64) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	args := make([]any, len(ids))
-	ph := make([]byte, 0, len(ids)*2)
-	for i, id := range ids {
-		args[i] = id
-		if i > 0 {
-			ph = append(ph, ',')
+	// Batched like CancelByID: "Cancel all queued" can leave tens of
+	// thousands of cancelled rows, and one statement naming them all would
+	// exceed SQLite's bound-parameter ceiling and clear none of them.
+	var total int64
+	for start := 0; start < len(ids); start += idBatch {
+		end := min(start+idBatch, len(ids))
+		ph, args := placeholders(ids[start:end])
+		res, err := s.db.Exec(
+			`DELETE FROM transfers WHERE state='cancelled' AND id IN (`+ph+`)`, args...)
+		if err != nil {
+			return total, fmt.Errorf("clear cancelled: %w", err)
 		}
-		ph = append(ph, '?')
+		n, _ := res.RowsAffected()
+		total += n
 	}
-	res, err := s.db.Exec(
-		`DELETE FROM transfers WHERE state='cancelled' AND id IN (`+string(ph)+`)`, args...)
-	if err != nil {
-		return 0, fmt.Errorf("clear cancelled: %w", err)
-	}
-	return res.RowsAffected()
+	return total, nil
 }
 
 func collectTransfers(rows *sql.Rows) ([]Transfer, error) {
@@ -516,4 +499,216 @@ func collectTransfers(rows *sql.Rows) ([]Transfer, error) {
 		out = append(out, t)
 	}
 	return out, rows.Err()
+}
+
+// queuedStates are the rows waiting on the dispatcher: not running, not
+// finished. "Cancel all queued" acts on exactly these — a running transfer
+// is the user's to stop individually, and a finished one has nothing left
+// to cancel.
+const queuedStates = `'pending','dispatched','paused'`
+
+// cancellableStates are the rows the dock's Cancel button is offered on:
+// everything unfinished plus failed. A failed row is cancellable one at a
+// time, so a bulk cancel must reach it too, or "Cancel 40 transfers" would
+// quietly cancel none of a failed batch.
+const cancellableStates = unfinishedStates + `,'failed'`
+
+// placeholderOwnerStates are the rows that still have a claim on the
+// .wspart/.wschunk files at a destination: everything unfinished, plus
+// failed rows, whose data is exactly what a retry resumes from. Deliberately
+// its own constant rather than a reference to cancellableStates, which the
+// two currently coincide with: that one means "states the Cancel button is
+// offered on", and quietly widening this one along with it would delete
+// bytes a live row is still writing.
+const placeholderOwnerStates = unfinishedStates + `,'failed'`
+
+// requeueSet is the clean-slate reset every "put this row back in the
+// queue" path applies: queued again, retry ladder wound back, stale error
+// dropped. Byte progress is deliberately absent, so a requeued transfer
+// resumes from its placeholder instead of starting over.
+//
+// One definition because the four callers — crash recovery, Retry failed,
+// a queue pause, and the orphan heal — differ only in which rows they
+// pick, and a reset that drifted between them would mean the same row came
+// back with a different number of attempts depending on how it stopped.
+// The caller binds updated_at; it was SQL-side in one of the four, which
+// wrote that row's timestamp at a different precision from the rest.
+const requeueSet = `SET state='pending', attempt=0, next_retry_at=NULL,
+	error=NULL, updated_at=?`
+
+// idBatch is how many ids one statement names. SQLite's bound-parameter
+// ceiling is far higher, but a folder of five thousand files is an ordinary
+// queue here and a single statement that size is no faster than ten.
+const idBatch = 500
+
+// TransfersByID returns the named rows, whatever their state, in claim
+// order. The cancel sweep reads back the rows it has just marked with it.
+func (s *Store) TransfersByID(ids []int64) ([]Transfer, error) {
+	out := make([]Transfer, 0, len(ids))
+	for start := 0; start < len(ids); start += idBatch {
+		end := min(start+idBatch, len(ids))
+		ph, args := placeholders(ids[start:end])
+		rows, err := s.db.Query(
+			`SELECT `+transferCols+` FROM transfers WHERE id IN (`+ph+`) ORDER BY id ASC`, args...)
+		if err != nil {
+			return nil, fmt.Errorf("transfers by id: %w", err)
+		}
+		got, err := collectTransfers(rows)
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, got...)
+	}
+	return out, nil
+}
+
+// CancelByID marks the named rows cancelled, and only while they are still
+// cancellable. Explicit ids keep the confirmation honest, as ClearFailedByID
+// does: the user approved the rows they were shown, and one that finished
+// while the dialog sat open is not part of that consent. A running row is
+// included on purpose — the dispatcher stops its goroutine afterwards, and
+// the state must already say cancelled when the engine lets go, or
+// finishWithError would treat the stop as a failure and retry it.
+//
+// The conflict column is cleared with the state: a cancelled row is no
+// longer waiting for an answer, and every "held" check in the app keys on
+// the column alone, so leaving it would keep the row in the decision bar
+// and let "Overwrite all" act on a transfer the user just cancelled.
+//
+// Returns the ids the statement actually changed, not a count: the
+// caller's follow-through (stop the goroutine, discard placeholders) must
+// act on exactly those rows. A snapshot taken before the write is wrong in
+// both directions — it names a row the pump claimed in between, whose
+// placeholder is then unlinked under live lanes, and it misses a row that
+// arrived in between, whose placeholder is then never discarded.
+func (s *Store) CancelByID(ids []int64) ([]int64, error) {
+	marked := make([]int64, 0, len(ids))
+	for start := 0; start < len(ids); start += idBatch {
+		end := min(start+idBatch, len(ids))
+		ph, args := placeholders(ids[start:end])
+		got, err := s.updateReturningIDs(
+			`UPDATE transfers SET state='cancelled', conflict=NULL, updated_at=?
+			 WHERE state IN (`+cancellableStates+`) AND id IN (`+ph+`) RETURNING id`,
+			append([]any{nowUTC()}, args...)...)
+		if err != nil {
+			return marked, fmt.Errorf("cancel transfers: %w", err)
+		}
+		marked = append(marked, got...)
+	}
+	return marked, nil
+}
+
+// CancelQueued marks every waiting row cancelled in one statement, so a
+// row enqueued between the caller's read and this write is cancelled too
+// rather than left as the lone survivor of a "cancel everything". Running
+// rows are untouched. Returns the ids it changed; see CancelByID.
+func (s *Store) CancelQueued() ([]int64, error) {
+	ids, err := s.updateReturningIDs(
+		`UPDATE transfers SET state='cancelled', conflict=NULL, updated_at=?
+		 WHERE state IN (`+queuedStates+`) RETURNING id`, nowUTC())
+	if err != nil {
+		return nil, fmt.Errorf("cancel queued: %w", err)
+	}
+	return ids, nil
+}
+
+// updateReturningIDs runs an UPDATE ... RETURNING id and collects the ids.
+func (s *Store) updateReturningIDs(q string, args ...any) ([]int64, error) {
+	rows, err := s.db.Query(q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return ids, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// Requeue returns a running row to pending from a clean slate — the same
+// reset RecoverInterrupted applies on launch, for the same reason: pausing
+// the queue or closing the app is not a transfer failure, so the row must
+// not come back with attempts spent and a stale error attached. Byte
+// progress is untouched. Reports whether the row was active; a row the
+// user paused or cancelled in the meantime is left as they set it.
+func (s *Store) Requeue(id int64) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE transfers `+requeueSet+` WHERE id=? AND state='active'`, nowUTC(), id)
+	if err != nil {
+		return false, fmt.Errorf("requeue transfer: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// placeholders builds the "?,?,?" list and argument slice for an IN clause.
+func placeholders(ids []int64) (string, []any) {
+	args := make([]any, len(ids))
+	ph := make([]byte, 0, len(ids)*2)
+	for i, id := range ids {
+		args[i] = id
+		if i > 0 {
+			ph = append(ph, ',')
+		}
+		ph = append(ph, '?')
+	}
+	return string(ph), args
+}
+
+// FinishActive writes a terminal state for a running row, and only while
+// it is still running. The engine's goroutine is the caller: between its
+// last read and this write the user may have cancelled or paused the row,
+// and an unguarded write would overwrite that choice — a cancelled
+// download flipping to completed, or a paused one to failed. Reports
+// whether the write landed; the caller re-reads and settles otherwise.
+func (s *Store) FinishActive(id int64, state string, errMsg *string) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE transfers SET state=?, error=?, updated_at=? WHERE id=? AND state='active'`,
+		state, errMsg, nowUTC(), id)
+	if err != nil {
+		return false, fmt.Errorf("finish transfer: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// ScheduleRetryIfActive bumps attempt, sets the retry deadline and
+// requeues — for a row that is still the engine's to schedule, and only
+// then. Guarded like FinishActive, and for the same reason: the user can
+// cancel or pause a transfer while its engine unwinds, and an unguarded
+// write here would put the row they just cancelled back on the ladder.
+// There is deliberately no unguarded variant to reach for.
+func (s *Store) ScheduleRetryIfActive(id int64, nextRetryAt string, errMsg *string) (bool, error) {
+	res, err := s.db.Exec(
+		`UPDATE transfers SET state='pending', attempt=attempt+1, next_retry_at=?, error=?, updated_at=?
+		 WHERE id=? AND state='active'`, nextRetryAt, errMsg, nowUTC(), id)
+	if err != nil {
+		return false, fmt.Errorf("schedule retry: %w", err)
+	}
+	n, err := res.RowsAffected()
+	return n > 0, err
+}
+
+// RequeueExcept returns every active row NOT in `running` to a clean
+// pending. An active row with no goroutine behind it is an orphan: a
+// requeue that failed to write while the queue paused, for instance. The
+// pump lists only pending rows, so nothing in a running app would ever
+// pick it up again; resuming the queue is the natural moment to heal it.
+func (s *Store) RequeueExcept(running []int64) (int64, error) {
+	ph, args := placeholders(running)
+	q := `UPDATE transfers ` + requeueSet + ` WHERE state='active'`
+	if len(running) > 0 {
+		q += ` AND id NOT IN (` + ph + `)`
+	}
+	res, err := s.db.Exec(q, append([]any{nowUTC()}, args...)...)
+	if err != nil {
+		return 0, fmt.Errorf("requeue orphans: %w", err)
+	}
+	return res.RowsAffected()
 }

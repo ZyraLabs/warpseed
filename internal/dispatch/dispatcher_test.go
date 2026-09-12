@@ -1,9 +1,13 @@
 package dispatch
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -486,5 +490,586 @@ func TestUploadDoesNotConsumeTheWholeSiteBudget(t *testing.T) {
 		t.Fatalf("an upload (%d lanes) and a download (%d lanes) need %d connections "+
 			"but the shipped per-site budget is %d — one direction starves the other",
 			upLanes, downLanes, upLanes+downLanes, shippedSiteCap)
+	}
+}
+
+// recSink records every event so a test can assert what the frontend would
+// have been told.
+type recSink struct {
+	mu     sync.Mutex
+	events []string
+}
+
+func (r *recSink) Emit(name string, _ any) {
+	r.mu.Lock()
+	r.events = append(r.events, name)
+	r.mu.Unlock()
+}
+
+func (r *recSink) count(name string) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := 0
+	for _, e := range r.events {
+		if e == name {
+			n++
+		}
+	}
+	return n
+}
+
+func TestPausedQueueClaimsNothing(t *testing.T) {
+	// Arrange — a pending row, plenty of budget, and the persisted pause
+	// flag set as a previous run would have left it.
+	store, err := queue.Open(filepath.Join(t.TempDir(), "q.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	site, err := store.SaveSite(queue.Site{Name: "t", Protocol: "sftp", Host: "example.test", Username: "u"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: filepath.Join(t.TempDir(), "a"), Size: 10})
+	set(t, store, "queue.paused", "1")
+	// A nil factory: any claim would dial and panic, which is the failure
+	// this test exists to catch.
+	d := New(store, nopSink{}, nil)
+
+	// Act
+	if !d.Paused() {
+		t.Fatal("dispatcher did not restore the persisted pause")
+	}
+	d.pump(context.Background())
+
+	// Assert
+	if got, _ := store.TransferByID(id); got.State != "pending" {
+		t.Fatalf("row is %q after a pump on a paused queue, want pending", got.State)
+	}
+}
+
+func TestSetPausedPersistsAndRequeuesRunningTransfers(t *testing.T) {
+	// Arrange — a running transfer whose engine blocks until its context is
+	// cancelled, standing in for a copy mid-flight.
+	store, err := queue.Open(filepath.Join(t.TempDir(), "q.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	site, _ := store.SaveSite(queue.Site{Name: "t", Protocol: "sftp", Host: "example.test", Username: "u"})
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: "/l/a", Size: 10})
+	// One real retry, so the row carries a spent attempt the reset must
+	// wind back.
+	_ = store.SetTransferState(id, "active", nil)
+	_, _ = store.ScheduleRetryIfActive(id, "2000-01-01T00:00:00Z", nil)
+	sink := &recSink{}
+	d := New(store, sink, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	tctx, tcancel := context.WithCancel(ctx)
+	d.mu.Lock()
+	d.cancels[id] = tcancel
+	d.slots[id] = 1
+	d.activeN = 1
+	d.mu.Unlock()
+	if won, _ := store.ClaimPending(id); !won {
+		t.Fatal("claim")
+	}
+	finished := make(chan struct{})
+	d.running.Add(1)
+	go func() {
+		defer d.running.Done()
+		defer d.release(queue.Transfer{ID: id, SiteID: site})
+		<-tctx.Done()
+		d.finishWithError(tctx, queue.Transfer{ID: id, SiteID: site, Src: "/a", Attempt: 1}, context.Canceled)
+		close(finished)
+	}()
+
+	// Act
+	if err := d.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-finished:
+	case <-time.After(5 * time.Second):
+		t.Fatal("running transfer did not stop after SetPaused")
+	}
+
+	// Assert — persisted, flagged, and the row is a clean pending, not a
+	// failed or backed-off one.
+	if store.Setting("queue.paused", "") != "1" || !d.Paused() {
+		t.Fatalf("pause not persisted: setting=%q flag=%v", store.Setting("queue.paused", ""), d.Paused())
+	}
+	got, _ := store.TransferByID(id)
+	if got.State != "pending" || got.Attempt != 0 || got.NextRetryAt != nil {
+		t.Fatalf("row after pause = %q attempt %d retryAt %v; want a clean pending", got.State, got.Attempt, got.NextRetryAt)
+	}
+	if sink.count("queue:paused") != 1 {
+		t.Errorf("queue:paused emitted %d times, want 1", sink.count("queue:paused"))
+	}
+
+	// Act — resume nudges the pump and persists the flip.
+	if err := d.SetPaused(false); err != nil {
+		t.Fatal(err)
+	}
+	if d.Paused() || store.Setting("queue.paused", "") != "0" {
+		t.Fatal("resume did not clear the persisted pause")
+	}
+	select {
+	case <-d.wake:
+	default:
+		t.Error("resume did not wake the pump")
+	}
+}
+
+func TestCancelManyDiscardsPlaceholdersAndEmitsOnce(t *testing.T) {
+	// Arrange — three queued downloads; one paused with a real .wspart on
+	// disk, one that never wrote a byte, one already completed (must survive).
+	store, err := queue.Open(filepath.Join(t.TempDir(), "q.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	site, _ := store.SaveSite(queue.Site{Name: "t", Protocol: "sftp", Host: "example.test", Username: "u"})
+	dir := t.TempDir()
+	partDst := filepath.Join(dir, "part.bin")
+	part := partDst + sftpfast.PartSuffix
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	paused, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/p", Dst: partDst, Size: 8})
+	_ = store.UpdateTransferProgress(paused, 4)
+	_ = store.SetTransferState(paused, "paused", nil)
+	fresh, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/f", Dst: filepath.Join(dir, "fresh.bin"), Size: 8})
+	done, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/d", Dst: filepath.Join(dir, "done.bin"), Size: 8})
+	_ = store.SetTransferState(done, "completed", nil)
+	sink := &recSink{}
+	d := New(store, sink, nil)
+
+	// Act
+	n, err := d.CancelMany([]int64{paused, fresh, done})
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.sweeps.Wait()
+
+	// Assert
+	if n != 2 {
+		t.Fatalf("cancelled %d, want 2", n)
+	}
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Errorf("cancelled paused row left its placeholder behind: %v", err)
+	}
+	if got, _ := store.TransferByID(paused); got.State != "cancelled" || got.BytesDone != 0 {
+		t.Errorf("paused row = %q with %d bytes, want cancelled/0", got.State, got.BytesDone)
+	}
+	if got, _ := store.TransferByID(done); got.State != "completed" {
+		t.Errorf("completed row became %q", got.State)
+	}
+	// One refresh before the placeholder sweep (rows read as cancelled at
+	// once) and one after — bounded by the batch, never by the row count.
+	if c := sink.count("queue:changed"); c != 2 {
+		t.Errorf("queue:changed emitted %d times, want exactly 2 for the batch", c)
+	}
+}
+
+func openStoreWithSite(t *testing.T) (*queue.Store, int64) {
+	t.Helper()
+	store, err := queue.Open(filepath.Join(t.TempDir(), "q.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+	site, err := store.SaveSite(queue.Site{Name: "t", Protocol: "sftp", Host: "example.test", Username: "u"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store, site
+}
+
+// fakeRunning registers a transfer as in flight exactly as pump would, and
+// returns the context its engine would be watching.
+func fakeRunning(t *testing.T, d *Dispatcher, tr queue.Transfer) context.Context {
+	t.Helper()
+	tctx, tcancel := context.WithCancel(context.Background())
+	t.Cleanup(tcancel)
+	d.mu.Lock()
+	d.cancels[tr.ID] = tcancel
+	d.slots[tr.ID] = 1
+	d.activeDst[dstKey(tr)] = true
+	d.perSite[tr.SiteID]++
+	d.activeN++
+	d.mu.Unlock()
+	if won, _ := d.store.ClaimPending(tr.ID); !won {
+		t.Fatalf("claim %d", tr.ID)
+	}
+	return tctx
+}
+
+func TestStoppingQueueClaimsNothing(t *testing.T) {
+	// Arrange — a row requeued by shutdown must not be picked straight back
+	// up during the grace period and started into a closing database.
+	store, site := openStoreWithSite(t)
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: filepath.Join(t.TempDir(), "a"), Size: 10})
+	d := New(store, nopSink{}, nil) // nil factory: any claim panics
+
+	// Act
+	d.Stop(time.Millisecond)
+	d.pump(context.Background())
+
+	// Assert
+	if got, _ := store.TransferByID(id); got.State != "pending" {
+		t.Fatalf("row is %q after a pump during shutdown, want pending", got.State)
+	}
+}
+
+func TestResumeBeforeLanesReleaseStillRequeuesClean(t *testing.T) {
+	// Arrange — the queue is paused and resumed again before the running
+	// transfer's engine has let go. The stop was still the pause's doing.
+	store, site := openStoreWithSite(t)
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: "/l/a", Size: 10})
+	d := New(store, nopSink{}, nil)
+	tr := queue.Transfer{ID: id, SiteID: site, Src: "/a", Dst: "/l/a"}
+	tctx := fakeRunning(t, d, tr)
+
+	// Act — pause, resume immediately, then the engine unwinds.
+	if err := d.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	if err := d.SetPaused(false); err != nil {
+		t.Fatal(err)
+	}
+	<-tctx.Done()
+	d.finishWithError(tctx, tr, context.Canceled)
+	d.release(tr)
+
+	// Assert — pending and clean, not failed with "context canceled".
+	got, _ := store.TransferByID(id)
+	if got.State != "pending" || got.Error != nil || got.Attempt != 0 {
+		t.Fatalf("row = %q err %v attempt %d; want a clean pending", got.State, got.Error, got.Attempt)
+	}
+	d.mu.Lock()
+	_, leaked := d.requeue[id]
+	d.mu.Unlock()
+	if leaked {
+		t.Error("release left the requeue intent behind")
+	}
+}
+
+func TestCancelDuringPauseUnwindStaysCancelled(t *testing.T) {
+	// Arrange — the queue is paused; before the engine unwinds the user
+	// cancels the row. Requeue must not resurrect it, and the classifier
+	// must not overwrite it with a retry.
+	store, site := openStoreWithSite(t)
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "a.bin")
+	part := dst + sftpfast.PartSuffix
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: dst, Size: 8})
+	_ = store.UpdateTransferProgress(id, 4)
+	d := New(store, nopSink{}, nil)
+	tr := queue.Transfer{ID: id, SiteID: site, Src: "/a", Dst: dst, Direction: "download", Size: 8}
+	tctx := fakeRunning(t, d, tr)
+	if err := d.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	if marked, err := store.CancelByID([]int64{id}); err != nil || len(marked) != 1 {
+		t.Fatalf("cancel: marked=%v err=%v", marked, err)
+	}
+
+	// Act — engine unwinds after the cancel landed.
+	<-tctx.Done()
+	d.finishWithError(tctx, tr, context.Canceled)
+	d.release(tr)
+
+	// Assert
+	got, _ := store.TransferByID(id)
+	if got.State != "cancelled" || got.BytesDone != 0 {
+		t.Fatalf("row = %q with %d bytes; want cancelled with its data discarded", got.State, got.BytesDone)
+	}
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Errorf("placeholder survived the cancel: %v", err)
+	}
+}
+
+func TestCancelQueuedLeavesAJustClaimedRowRunning(t *testing.T) {
+	// Arrange — one row the pump has already claimed, one still waiting.
+	// The dialog promised running transfers keep going; this one must.
+	store, site := openStoreWithSite(t)
+	claimed, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: "/l/a", Size: 10})
+	waiting, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/b", Dst: "/l/b", Size: 10})
+	d := New(store, &recSink{}, nil)
+	tctx := fakeRunning(t, d, queue.Transfer{ID: claimed, SiteID: site, Src: "/a", Dst: "/l/a"})
+
+	// Act
+	n, err := d.CancelQueued()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert
+	if n != 1 {
+		t.Fatalf("cancelled %d rows, want 1 (the claimed one went active)", n)
+	}
+	if tctx.Err() != nil {
+		t.Fatal("the running transfer was cut off by Cancel all queued")
+	}
+	if got, _ := store.TransferByID(claimed); got.State != "active" {
+		t.Errorf("claimed row is %q, want active", got.State)
+	}
+	if got, _ := store.TransferByID(waiting); got.State != "cancelled" {
+		t.Errorf("waiting row is %q, want cancelled", got.State)
+	}
+}
+
+func TestCancelQueuedSparesAPlaceholderARunningSiblingIsWriting(t *testing.T) {
+	// Arrange — an idle paused row with progress and a running row share a
+	// destination. Cancelling the queue must discard the idle row's
+	// bookkeeping but leave the file the running lanes are writing.
+	store, site := openStoreWithSite(t)
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "shared.bin")
+	part := dst + sftpfast.PartSuffix
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	idle, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: dst, Size: 8})
+	_ = store.UpdateTransferProgress(idle, 4)
+	_ = store.SetTransferState(idle, "paused", nil)
+	live, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/b", Dst: dst, Size: 8})
+	d := New(store, &recSink{}, nil)
+	fakeRunning(t, d, queue.Transfer{ID: live, SiteID: site, Src: "/b", Dst: dst})
+
+	// Act
+	if _, err := d.CancelQueued(); err != nil {
+		t.Fatal(err)
+	}
+	d.sweeps.Wait()
+
+	// Assert
+	if _, err := os.Stat(part); err != nil {
+		t.Fatalf("placeholder a running transfer is writing was removed: %v", err)
+	}
+	if got, _ := store.TransferByID(idle); got.State != "cancelled" {
+		t.Errorf("idle row is %q, want cancelled", got.State)
+	}
+}
+
+func TestReleaseDiscardsARowCancelledDuringItsClaim(t *testing.T) {
+	// Arrange — the row is registered as running (pump does this before it
+	// claims) and is cancelled in that window; the claim then loses and
+	// release runs with no goroutine behind it.
+	store, site := openStoreWithSite(t)
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "a.bin")
+	part := dst + sftpfast.PartSuffix
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: dst, Size: 8})
+	_ = store.UpdateTransferProgress(id, 4)
+	d := New(store, &recSink{}, nil)
+	tr := queue.Transfer{ID: id, SiteID: site, Src: "/a", Dst: dst, Direction: "download", Size: 8}
+	_, tcancel := context.WithCancel(context.Background())
+	defer tcancel()
+	d.mu.Lock()
+	d.cancels[id] = tcancel
+	d.slots[id] = 1
+	d.activeDst[dstKey(tr)] = true
+	d.activeN = 1
+	d.mu.Unlock()
+
+	// Act — cancel lands (sees "running", leaves the discard to a goroutine
+	// that will never exist), then the claim loses and releases.
+	if _, err := d.CancelMany([]int64{id}); err != nil {
+		t.Fatal(err)
+	}
+	if won, _ := store.ClaimPending(id); won {
+		t.Fatal("claim won against a cancelled row")
+	}
+	d.release(tr)
+	d.sweeps.Wait()
+
+	// Assert
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Errorf("placeholder survived a cancel that raced the claim: %v", err)
+	}
+	if got, _ := store.TransferByID(id); got.State != "cancelled" || got.BytesDone != 0 {
+		t.Errorf("row = %q with %d bytes, want cancelled/0", got.State, got.BytesDone)
+	}
+}
+
+func TestCancelManyDiscardsSharedDestinationPlaceholders(t *testing.T) {
+	// Arrange — two paused rows aimed at one local file (different sources:
+	// a conflict, not a duplicate), sharing one placeholder on disk. Both
+	// cancelled in one batch: neither may treat the other as a live owner.
+	store, site := openStoreWithSite(t)
+	dir := t.TempDir()
+	dst := filepath.Join(dir, "shared.bin")
+	part := dst + sftpfast.PartSuffix
+	if err := os.WriteFile(part, []byte("half"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: dst, Size: 8})
+	b, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/b", Dst: dst, Size: 8})
+	for _, id := range []int64{a, b} {
+		_ = store.UpdateTransferProgress(id, 4)
+		_ = store.SetTransferState(id, "paused", nil)
+	}
+	d := New(store, nopSink{}, nil)
+
+	// Act
+	if _, err := d.CancelMany([]int64{a, b}); err != nil {
+		t.Fatal(err)
+	}
+	d.sweeps.Wait()
+
+	// Assert
+	if _, err := os.Stat(part); !os.IsNotExist(err) {
+		t.Errorf("shared placeholder survived a batch cancel of both owners: %v", err)
+	}
+}
+
+func TestPauseUnwindWithRowAlreadyPendingStaysPending(t *testing.T) {
+	// Arrange — queue paused; before the engine lets go the user presses
+	// the row's own Pause then Resume, so the row is 'pending' at unwind.
+	store, site := openStoreWithSite(t)
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: "/l/a", Size: 10})
+	d := New(store, nopSink{}, nil)
+	tr := queue.Transfer{ID: id, SiteID: site, Src: "/a", Dst: "/l/a"}
+	tctx := fakeRunning(t, d, tr)
+	if err := d.SetPaused(true); err != nil {
+		t.Fatal(err)
+	}
+	_ = d.Pause(id)
+	_ = d.Resume(id)
+
+	// Act
+	<-tctx.Done()
+	d.finishWithError(tctx, tr, context.Canceled)
+	d.release(tr)
+
+	// Assert — never "failed: context canceled".
+	got, _ := store.TransferByID(id)
+	if got.State != "pending" || got.Error != nil {
+		t.Fatalf("row = %q err %v, want pending with no error", got.State, got.Error)
+	}
+}
+
+func TestLateCancelDoesNotUnfinishACompletedTransfer(t *testing.T) {
+	// Arrange — the cancel lands after the engine has renamed the finished
+	// file into place but before the dispatcher records completion.
+	store, site := openStoreWithSite(t)
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: filepath.Join(t.TempDir(), "a"), Size: 10})
+	d := New(store, nopSink{}, nil)
+	tr := queue.Transfer{ID: id, SiteID: site, Src: "/a", Dst: "/l/a"}
+	fakeRunning(t, d, tr)
+	if _, err := store.CancelByID([]int64{id}); err != nil {
+		t.Fatal(err)
+	}
+
+	// Act — the success path's write is deliberately unguarded.
+	if err := store.SetTransferState(id, "completed", nil); err != nil {
+		t.Fatal(err)
+	}
+	d.release(tr)
+	d.sweeps.Wait()
+
+	// Assert — completed, with its bytes, and nothing discarded.
+	if got, _ := store.TransferByID(id); got.State != "completed" {
+		t.Errorf("row is %q, want completed: the file is on disk", got.State)
+	}
+}
+
+func TestResumeHealsAnOrphanedActiveRow(t *testing.T) {
+	// Arrange — a row left 'active' with no goroutine (a requeue that
+	// failed to write during the pause), beside one still unwinding.
+	store, site := openStoreWithSite(t)
+	orphan, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/a", Dst: "/l/a", Size: 10})
+	_ = store.SetTransferState(orphan, "active", nil)
+	live, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "download", Src: "/b", Dst: "/l/b", Size: 10})
+	d := New(store, nopSink{}, nil)
+	fakeRunning(t, d, queue.Transfer{ID: live, SiteID: site, Src: "/b", Dst: "/l/b"})
+	_ = d.SetPaused(true)
+
+	// Act
+	if err := d.SetPaused(false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Assert
+	if got, _ := store.TransferByID(orphan); got.State != "pending" {
+		t.Errorf("orphan is %q after resume, want pending", got.State)
+	}
+	if got, _ := store.TransferByID(live); got.State != "active" {
+		t.Errorf("row still unwinding became %q", got.State)
+	}
+}
+
+func TestDiscardSkipsRemoteDialDuringShutdown(t *testing.T) {
+	// Arrange — a cancelled upload with progress, whose discard would need
+	// a connection; the dispatcher is stopping. The nil factory makes any
+	// dial a panic, which is the failure this test exists to catch.
+	store, site := openStoreWithSite(t)
+	id, _ := store.EnqueueTransfer(queue.Transfer{SiteID: site, Engine: "sftpfast", Direction: "upload", Src: "/l/a", Dst: "/r/a", Size: 10})
+	_ = store.UpdateTransferProgress(id, 5)
+	if _, err := store.CancelByID([]int64{id}); err != nil {
+		t.Fatal(err)
+	}
+	d := New(store, nopSink{}, nil)
+	d.Stop(time.Millisecond)
+
+	// Act
+	d.discardPartials(queue.Transfer{ID: id, SiteID: site, Direction: "upload", Src: "/l/a", Dst: "/r/a", Size: 10}, nil)
+
+	// Assert — bytes still recorded, so Clear done knows there is data.
+	if got, _ := store.TransferByID(id); got.BytesDone != 5 {
+		t.Fatalf("shutdown discard reset progress to %d; want the record kept for Clear done", got.BytesDone)
+	}
+}
+
+func TestBulkCancelDialsOncePerSiteNotOncePerRow(t *testing.T) {
+	// Arrange — six part-uploaded rows on one unreachable site, cancelled
+	// together. Dialling per row would wait out a separate timeout for
+	// every one of them.
+	store, site := openStoreWithSite(t)
+	var dials int32
+	d := New(store, nopSink{}, func(context.Context, int64, int) ([]*sftpfast.Client, error) {
+		atomic.AddInt32(&dials, 1)
+		return nil, fmt.Errorf("seedbox not answering")
+	})
+	ids := make([]int64, 0, 6)
+	for i := 0; i < 6; i++ {
+		id, _ := store.EnqueueTransfer(queue.Transfer{
+			SiteID: site, Engine: "sftpfast", Direction: "upload",
+			Src: fmt.Sprintf("/l/f%d", i), Dst: fmt.Sprintf("/r/f%d", i), Size: 10,
+		})
+		_ = store.UpdateTransferProgress(id, 5)
+		ids = append(ids, id)
+	}
+
+	// Act
+	n, err := d.CancelMany(ids)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.sweeps.Wait()
+
+	// Assert
+	if n != len(ids) {
+		t.Fatalf("cancelled %d rows, want %d", n, len(ids))
+	}
+	if got := atomic.LoadInt32(&dials); got != 1 {
+		t.Fatalf("dialled %d times for %d rows on one site, want 1", got, len(ids))
+	}
+	// Nothing was removed, so nothing may claim to have been: the rows keep
+	// their byte counts for Clear done to sweep when the site is back.
+	for _, id := range ids {
+		got, _ := store.TransferByID(id)
+		if got.BytesDone != 5 {
+			t.Fatalf("row %d reports %d bytes after an unreachable cleanup, want 5 kept", id, got.BytesDone)
+		}
 	}
 }

@@ -106,6 +106,7 @@ export default function SettingsDialog() {
   const theme: ThemePref = coerceTheme(cfg["ui.theme"] ?? null);
   const bwMode = cfg["bw.mode"] || "off";
   const closeAction = cfg["ui.close_action"] || "ask";
+  const startPaused = cfg["queue.start_paused"] === "1";
 
   // Hyperlane draws its lanes from the same connection budget the transfer
   // caps set, so a budget below the lane count silently narrows it. That
@@ -411,11 +412,38 @@ export default function SettingsDialog() {
             ))}
           </div>
           <p className="set-note">
-            Unfinished transfers always resume the next time you open warpseed.
+            Unfinished transfers are kept and pick up the next time you open
+            warpseed (or wait, if the queue starts paused &mdash; see below).
             Choosing &ldquo;Close&rdquo; skips the confirmation; choosing
             &ldquo;Minimize to pill&rdquo; shrinks the window instead of closing
             it. With nothing transferring, warpseed closes straight away
             whichever you pick.
+          </p>
+        </section>
+
+        <section className="set-section">
+          <h3>Queue on launch</h3>
+          <div className="segmented" role="radiogroup" aria-label="Queue on launch">
+            {[
+              ["0", "Resume transfers"],
+              ["1", "Start paused"],
+            ].map(([v, label]) => (
+              <button
+                key={v}
+                className={(startPaused ? "1" : "0") === v ? "seg--on" : ""}
+                role="radio"
+                aria-checked={(startPaused ? "1" : "0") === v}
+                onClick={() => put("queue.start_paused", v)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <p className="set-note">
+            &ldquo;Start paused&rdquo; opens warpseed with the queue stopped:
+            everything you queued is still there, but nothing moves until you
+            press <strong>Resume queue</strong> in the dock. Pausing the queue
+            from the dock is also remembered across a restart.
           </p>
         </section>
 

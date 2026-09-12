@@ -19,6 +19,10 @@ export function CancelQuit():Promise<void>;
 
 export function CancelTransfer(arg1:number):Promise<void>;
 
+export function CancelTransfers(arg1:Array<number>):Promise<number>;
+
+export function CancelQueuedTransfers():Promise<number>;
+
 export function CheckForUpdate():Promise<{current:string;latest:string;url:string;available:boolean;dismissed:boolean}>;
 
 export function ClearDoneTransfers():Promise<main.ClearResult>;
@@ -94,6 +98,10 @@ export function LogDir():Promise<string>;
 export function SetMiniMode(arg1:boolean):Promise<void>;
 
 export function SetSetting(arg1:string,arg2:string):Promise<void>;
+
+export function SetQueuePaused(arg1:boolean):Promise<void>;
+
+export function QueuePaused():Promise<boolean>;
 
 export function SetSiteRemotePath(arg1:number,arg2:string):Promise<void>;
 

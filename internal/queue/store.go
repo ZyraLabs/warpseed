@@ -117,10 +117,8 @@ func (s *Store) migrate() error {
 // the new run. Byte progress is untouched, so recovery still resumes rather
 // than restarts.
 func (s *Store) RecoverInterrupted() (int64, error) {
-	res, err := s.db.Exec(`UPDATE transfers
-		SET state='pending', attempt=0, next_retry_at=NULL, error=NULL,
-		    updated_at=strftime('%Y-%m-%dT%H:%M:%fZ','now')
-		WHERE state IN ('dispatched','active')`)
+	res, err := s.db.Exec(
+		`UPDATE transfers `+requeueSet+` WHERE state IN ('dispatched','active')`, nowUTC())
 	if err != nil {
 		return 0, fmt.Errorf("recover interrupted transfers: %w", err)
 	}

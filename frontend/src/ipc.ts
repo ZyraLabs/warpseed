@@ -4,6 +4,8 @@ import {
   AckCloseDialog,
   AppVersion,
   CancelQuit,
+  CancelQueuedTransfers,
+  CancelTransfers,
   CloseToPill,
   ConfirmQuit,
   CancelTransfer,
@@ -45,7 +47,9 @@ import {
   SaveSite,
   SchemaVersion,
   SetMiniMode,
+  SetQueuePaused,
   SetSetting,
+  QueuePaused,
   Sites,
   TransfersList,
 } from "../wailsjs/go/main/App";
@@ -340,6 +344,19 @@ export const transfersList = (): Promise<Transfer[]> =>
 export const pauseTransfer = (id: number): Promise<void> => PauseTransfer(id);
 export const resumeTransfer = (id: number): Promise<void> => ResumeTransfer(id);
 export const cancelTransfer = (id: number): Promise<void> => CancelTransfer(id);
+/** Cancels the ids the user selected; resolves to how many were actually
+    cancelled (a row that finished while the confirmation was open is not). */
+export const cancelTransfers = (ids: number[]): Promise<number> => CancelTransfers(ids);
+/** Cancels everything waiting — queued, held, paused — and leaves running
+    transfers alone. */
+export const cancelQueuedTransfers = (): Promise<number> => CancelQueuedTransfers();
+/** Queue-wide pause: nothing starts and running transfers go back to
+    pending with their progress kept. Persisted, so it survives a restart. */
+export const setQueuePaused = (on: boolean): Promise<void> => SetQueuePaused(on);
+export const queuePaused = (): Promise<boolean> => QueuePaused();
+export interface QueuePausedEvent {
+  paused: boolean;
+}
 /** One side of an overwrite clash. mtime is Unix seconds; 0 = unknown. */
 export interface FileFacts {
   size: number;
